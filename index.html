@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DYBL Lettery - Interactive Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }
+            50% { box-shadow: 0 0 40px rgba(59, 130, 246, 0.8); }
+        }
+        .pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+        @keyframes slideIn {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .slide-in { animation: slideIn 0.5s ease-out; }
+        @keyframes coinFlip {
+            0% { transform: rotateY(0deg); }
+            100% { transform: rotateY(1080deg); }
+        }
+        .coin-flip { animation: coinFlip 1s ease-in-out; }
+        @keyframes growSeed {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        .grow-seed { animation: growSeed 1s ease-in-out; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 min-h-screen text-white">
+    <div class="container mx-auto px-4 py-8 max-w-7xl">
+        <!-- Header -->
+        <header class="text-center mb-12 slide-in">
+            <h1 class="text-5xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                DYBL LETTERY
+            </h1>
+            <p class="text-xl text-gray-300 mb-2">The Eternal Seed Protocol</p>
+            <p class="text-sm text-gray-400">Interactive Demo - No Blockchain Required</p>
+            <div class="mt-4 flex justify-center gap-4">
+                <a href="https://github.com/DYBL777/DYBL-v1" target="_blank" 
+                   class="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition">
+                    📚 GitHub: DYBL777/DYBL-v1
+                </a>
+                <a href="https://sepolia.basescan.org/address/0x4604044cE55fb4F28101c21282a7285B3500e0Ec" target="_blank"
+                   class="px-4 py-2 bg-blue-800 hover:bg-blue-700 rounded-lg transition">
+                    🔗 Live Contract
+                </a>
+            </div>
+        </header>
+
+        <!-- Stats Dashboard (Now 6 cards) -->
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+            <div class="bg-gray-800/50 backdrop-blur rounded-xl p-6 border border-blue-500/30">
+                <div class="text-sm text-gray-400 mb-2">Current Pot</div>
+                <div id="potDisplay" class="text-3xl font-bold text-green-400">$0.00</div>
+            </div>
+            <div class="bg-gray-800/50 backdrop-blur rounded-xl p-6 border border-purple-500/30">
+                <div class="text-sm text-gray-400 mb-2">Treasury Reserve</div>
+                <div id="treasuryDisplay" class="text-3xl font-bold text-purple-400">$0.00</div>
+            </div>
+            <div class="bg-gray-800/50 backdrop-blur rounded-xl p-6 border border-yellow-500/30">
+                <div class="text-sm text-gray-400 mb-2">Current Week</div>
+                <div id="weekDisplay" class="text-3xl font-bold text-yellow-400">1</div>
+            </div>
+            <div class="bg-gray-800/50 backdrop-blur rounded-xl p-6 border border-pink-500/30">
+                <div class="text-sm text-gray-400 mb-2">Total Players</div>
+                <div id="playersDisplay" class="text-3xl font-bold text-pink-400">0</div>
+            </div>
+            <div class="bg-gray-800/50 backdrop-blur rounded-xl p-6 border border-emerald-500/30">
+                <div class="text-sm text-gray-400 mb-2">Your Loyalty</div>
+                <div id="loyaltyDisplay" class="text-3xl font-bold text-emerald-400">Year 1</div>
+            </div>
+            <div class="bg-gray-800/50 backdrop-blur rounded-xl p-6 border border-cyan-500/30 relative overflow-hidden">
+                <div class="text-sm text-gray-400 mb-2">Projected 5-Yr Yield</div>
+                <div class="text-lg font-bold text-cyan-400">Eternal Seed</div>
+                <div id="tesYield" class="text-2xl font-bold text-green-400">$0</div>
+                <div class="text-xs text-gray-500 mt-1">vs Aave: <span id="aaveYield">$0</span> (<span id="multiple">—</span>x)</div>
+                <div class="absolute top-0 right-0 text-xs text-cyan-600/50 rotate-12 translate-x-4 -translate-y-2">364x edge</div>
+            </div>
+        </div>
+
+        <!-- Eternal Seed Visual Meter -->
+        <div class="mb-8 bg-gray-800/50 backdrop-blur rounded-xl p-6 border border-green-500/50">
+            <div class="text-center mb-4">
+                <div class="text-2xl font-bold">🌱 Eternal Seed Growth</div>
+                <div class="text-4xl my-4 grow-seed">🌿</div>
+                <div class="w-full bg-gray-700 rounded-full h-8 overflow-hidden">
+                    <div id="seedMeter" class="h-full bg-gradient-to-r from-green-600 to-emerald-500 transition-all duration-1000" style="width: 0%"></div>
+                </div>
+                <div class="text-sm text-gray-400 mt-2">Permanent capital locked forever</div>
+            </div>
+        </div>
+
+        <!-- Main Game Area -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+            <!-- Left: Pick Your Guess -->
+            <div class="bg-gray-800/50 backdrop-blur rounded-xl p-8 border border-blue-500/30">
+                <h2 class="text-2xl font-bold mb-6 text-center">Pick Your 6-Character Guess</h2>
+                <div class="flex justify-center gap-2 mb-8">
+                    <div id="char0" class="w-16 h-20 bg-gray-700 rounded-lg flex items-center justify-center text-3xl font-bold border-2 border-blue-500">_</div>
+                    <div id="char1" class="w-16 h-20 bg-gray-700 rounded-lg flex items-center justify-center text-3xl font-bold border-2 border-blue-500">_</div>
+                    <div id="char2" class="w-16 h-20 bg-gray-700 rounded-lg flex items-center justify-center text-3xl font-bold border-2 border-blue-500">_</div>
+                    <div id="char3" class="w-16 h-20 bg-gray-700 rounded-lg flex items-center justify-center text-3xl font-bold border-2 border-blue-500">_</div>
+                    <div id="char4" class="w-16 h-20 bg-gray-700 rounded-lg flex items-center justify-center text-3xl font-bold border-2 border-blue-500">_</div>
+                    <div id="char5" class="w-16 h-20 bg-gray-700 rounded-lg flex items-center justify-center text-3xl font-bold border-2 border-blue-500">_</div>
+                </div>
+                <div class="mb-6">
+                    <div class="text-sm text-gray-400 mb-2">Allowed Characters:</div>
+                    <div id="charPicker" class="grid grid-cols-10 gap-2"></div>
+                </div>
+                <div class="flex gap-4">
+                    <button onclick="clearGuess()" class="flex-1 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg font-bold transition">
+                        🗑️ Clear
+                    </button>
+                    <button onclick="buyTicket()" id="buyBtn" class="flex-1 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 rounded-lg font-bold transition pulse-glow">
+                        🎫 Buy Ticket ($3)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right: Draw & Results -->
+            <div class="bg-gray-800/50 backdrop-blur rounded-xl p-8 border border-purple-500/30">
+                <h2 class="text-2xl font-bold mb-6 text-center">Weekly Draw</h2>
+                <div class="mb-8">
+                    <div class="text-sm text-gray-400 mb-2 text-center">Winning Combination:</div>
+                    <div class="flex justify-center gap-2 mb-4">
+                        <div id="win0" class="w-16 h-20 bg-gray-700 rounded-lg flex items-center justify-center text-3xl font-bold border-2 border-yellow-500">?</div>
+                        <div id="win1" class="w-16 h-20 bg-gray-700 rounded-lg flex items-center justify-center text-3xl font-bold border-2 border-yellow-500">?</div>
+                        <div id="win2" class="w-16 h-20 bg-gray-700 rounded-lg flex items-center justify-center text-3xl font-bold border-2 border-yellow-500">?</div>
+                        <div id="win3" class="w-16 h-20 bg-gray-700 rounded-lg flex items-center justify-center text-3xl font-bold border-2 border-yellow-500">?</div>
+                        <div id="win4" class="w-16 h-20 bg-gray-700 rounded-lg flex items-center justify-center text-3xl font-bold border-2 border-yellow-500">?</div>
+                        <div id="win5" class="w-16 h-20 bg-gray-700 rounded-lg flex items-center justify-center text-3xl font-bold border-2 border-yellow-500">?</div>
+                    </div>
+                </div>
+                <button onclick="forceDraw()" class="w-full py-4 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 rounded-lg font-bold text-xl mb-6 transition">
+                    🎲 Force Draw (Admin)
+                </button>
+                <button onclick="simulateScale()" class="w-full py-3 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 rounded-lg font-bold mb-6 transition">
+                    🚀 Simulate 100k Users/Week
+                </button>
+                <div id="matchResult" class="bg-gray-900/50 rounded-lg p-6 text-center hidden">
+                    <div class="text-4xl font-bold mb-2" id="matchCount">0/6</div>
+                    <div class="text-sm text-gray-400" id="matchText">matches</div>
+                </div>
+                <div id="seedAnimation" class="bg-gradient-to-r from-green-900/30 to-emerald-900/30 rounded-lg p-6 border border-green-500/50 hidden mt-4">
+                    <div class="text-center">
+                        <div class="text-2xl mb-2">🌱 Eternal Seed Injected!</div>
+                        <div class="text-3xl font-bold text-green-400" id="seedAmount">+$0.00</div>
+                        <div class="text-sm text-gray-400 mt-2">90% Treasury Recycled → Pot</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Eternal Seed Growth Simulator -->
+        <div class="mb-12 bg-gray-800/50 backdrop-blur rounded-xl p-8 border border-cyan-500/30">
+            <h2 class="text-2xl font-bold mb-6 text-center">📈 Eternal Seed Growth Simulator</h2>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div>
+                    <label class="text-sm text-gray-400">Weekly Users</label>
+                    <input type="range" id="simUsers" min="1000" max="500000" value="100000" step="10000" class="w-full">
+                    <div class="text-center text-sm" id="simUsersVal">100,000</div>
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400">Seed %</label>
+                    <input type="range" id="simSeed" min="5" max="30" value="10" step="1" class="w-full">
+                    <div class="text-center text-sm" id="simSeedVal">10%</div>
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400">Aave APY</label>
+                    <input type="range" id="simApy" min="0" max="10" value="5" step="0.5" class="w-full">
+                    <div class="text-center text-sm" id="simApyVal">5.0%</div>
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400">Win Rate %</label>
+                    <input type="range" id="simWin" min="0" max="100" value="100" step="10" class="w-full">
+                    <div class="text-center text-sm" id="simWinVal">100%</div>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div>
+                    <canvas id="growthChart"></canvas>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-left border-b border-gray-600">
+                                <th class="pb-2">Year</th>
+                                <th class="pb-2">TES Reserves</th>
+                                <th class="pb-2">Plain Aave Yield</th>
+                                <th class="pb-2">TES Stronger</th>
+                            </tr>
+                        </thead>
+                        <tbody id="simTable"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Why Eternal Seed Wins -->
+        <div class="mb-12 bg-gradient-to-r from-cyan-900/50 to-green-900/50 rounded-xl p-8 border border-cyan-500/50 text-center">
+            <h2 class="text-3xl font-bold mb-4">Why Eternal Seed Wins</h2>
+            <p class="text-xl mb-4">Same inflows • Same 5% APY • 5 Years</p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-2xl">
+                <div>
+                    <div class="font-bold text-green-400">$8.9M</div>
+                    <div class="text-sm text-gray-300">Eternal Seed<br>permanent capital</div>
+                </div>
+                <div class="text-6xl font-bold text-cyan-400">→</div>
+                <div>
+                    <div class="font-bold text-red-400">$24k</div>
+                    <div class="text-sm text-gray-300">Plain Aave<br>fleeting yield</div>
+                </div>
+            </div>
+            <p class="text-4xl font-bold text-cyan-400 mt-6">364x more value locked forever</p>
+        </div>
+
+        <!-- How It Works -->
+        <div class="mt-12 bg-gray-800/50 backdrop-blur rounded-xl p-8 border border-blue-500/30">
+            <h2 class="text-2xl font-bold mb-4">🌱 The Eternal Seed Mechanism</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                    <div class="text-lg font-bold text-blue-400 mb-2">1. Baseline Retention</div>
+                    <div class="text-sm text-gray-300">10% of every ticket<br>Stays in pot as permanent seed<br>(55% payout + 10% seed = 65% pot)</div>
+                </div>
+                <div>
+                    <div class="text-lg font-bold text-purple-400 mb-2">2. Treasury Recycling</div>
+                    <div class="text-sm text-gray-300">Idle treasury liquidity<br>Injected back into pot<br>90% early, tapers over time</div>
+                </div>
+                <div>
+                    <div class="text-lg font-bold text-green-400 mb-2">3. Self-Sustaining Growth</div>
+                    <div class="text-sm text-gray-300">10% baseline + treasury injection<br>Compounds even at 0% yield<br>No external yield dependency</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loyalty Cashback -->
+        <div class="mt-8 bg-gradient-to-r from-emerald-900/30 to-green-900/30 rounded-xl p-8 border border-emerald-500/50">
+            <h2 class="text-2xl font-bold mb-6 text-center">💎 3-Year Loyalty Cashback</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="bg-gray-800/50 rounded-lg p-6 text-center">
+                    <div class="text-4xl font-bold text-emerald-400 mb-2">10%</div>
+                    <div class="text-lg font-bold mb-2">Year 1</div>
+                </div>
+                <div class="bg-gray-800/50 rounded-lg p-6 text-center">
+                    <div class="text-4xl font-bold text-green-400 mb-2">12%</div>
+                    <div class="text-lg font-bold mb-2">Year 2</div>
+                </div>
+                <div class="bg-gray-800/50 rounded-lg p-6 text-center">
+                    <div class="text-4xl font-bold text-lime-400 mb-2">15%</div>
+                    <div class="text-lg font-bold mb-2">Year 3</div>
+                </div>
+            </div>
+            <div class="mt-6 text-center">
+                <div class="text-3xl font-bold bg-gradient-to-r from-emerald-400 to-lime-400 bg-clip-text text-transparent">
+                    37% Total Cashback Over 3 Years
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="text-center mt-12 text-gray-400 text-sm">
+            <p class="mb-2">Built by DYBL Protocol | GitHub: DYBL777/DYBL-v1</p>
+            <p>This is a demo interface. Actual protocol runs on Base Sepolia with Chainlink VRF + Aave V3</p>
+        </footer>
+    </div>
+
+    <script>
+        // Game State
+        let pot = 0;
+        let treasury = 0;
+        let week = 1;
+        let players = 0;
+        let currentGuess = ['_', '_', '_', '_', '_', '_'];
+        let currentPosition = 0;
+        let winningCombo = ['?', '?', '?', '?', '?', '?'];
+        let totalRevenue = 0;
+        let eternalSeed = 0; // For visual meter
+
+        const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&'.split('');
+        const WEEKS_PER_YEAR = 52;
+        const YEARS = 5;
+
+        let chart = null;
+
+        function initCharPicker() {
+            const picker = document.getElementById('charPicker');
+            ALPHABET.forEach(char => {
+                const btn = document.createElement('button');
+                btn.textContent = char;
+                btn.className = 'w-10 h-10 bg-gray-700 hover:bg-blue-600 rounded-lg font-bold transition';
+                btn.onclick = () => addChar(char);
+                picker.appendChild(btn);
+            });
+        }
+
+        function addChar(char) {
+            if (currentPosition < 6) {
+                currentGuess[currentPosition] = char;
+                document.getElementById(`char${currentPosition}`).textContent = char;
+                document.getElementById(`char${currentPosition}`).classList.add('coin-flip');
+                setTimeout(() => document.getElementById(`char${currentPosition}`).classList.remove('coin-flip'), 1000);
+                currentPosition++;
+            }
+        }
+
+        function clearGuess() {
+            currentGuess = ['_', '_', '_', '_', '_', '_'];
+            currentPosition = 0;
+            for (let i = 0; i < 6; i++) {
+                document.getElementById(`char${i}`).textContent = '_';
+            }
+        }
+
+        function buyTicket() {
+            if (currentPosition < 6) {
+                alert('Please complete your 6-character guess!');
+                return;
+            }
+
+            const TICKET_PRICE = 3;
+            const toPot = TICKET_PRICE * 0.65;
+            const toTreasury = TICKET_PRICE * 0.35;
+
+            pot += toPot;
+            treasury += toTreasury;
+            players++;
+            totalRevenue += TICKET_PRICE;
+
+            // Eternal Seed: 10% of prize allocation
+            const seedAdd = toPot * 0.153846; // 10 / 65 ≈ 15.38%
+            eternalSeed += seedAdd;
+
+            updateDisplay();
+            updateYieldProjection();
+            updateSeedMeter();
+            updateSimulator();
+
+            document.getElementById('buyBtn').classList.add('coin-flip');
+            setTimeout(() => document.getElementById('buyBtn').classList.remove('coin-flip'), 1000);
+
+            alert(`✅ Ticket purchased!\n\n💰 $${toPot.toFixed(2)} → Pot\n🏦 $${toTreasury.toFixed(2)} → Treasury\n🌱 $${seedAdd.toFixed(2)} → Eternal Seed\n\nYour guess: ${currentGuess.join('')}`);
+        }
+
+        function forceDraw() {
+            if (players === 0) {
+                alert('No tickets sold yet!');
+                return;
+            }
+
+            winningCombo = Array(6).fill(0).map(() => ALPHABET[Math.floor(Math.random() * ALPHABET.length)]);
+
+            for (let i = 0; i < 6; i++) {
+                setTimeout(() => {
+                    document.getElementById(`win${i}`).textContent = winningCombo[i];
+                    document.getElementById(`win${i}`).classList.add('coin-flip');
+                    setTimeout(() => document.getElementById(`win${i}`).classList.remove('coin-flip'), 1000);
+                }, i * 200);
+            }
+
+            setTimeout(() => {
+                const seedAmount = treasury * 0.90;
+                treasury -= seedAmount;
+                pot += seedAmount;
+                eternalSeed += seedAmount;
+
+                document.getElementById('seedAmount').textContent = `+$${seedAmount.toFixed(2)}`;
+                document.getElementById('seedAnimation').classList.remove('hidden');
+                document.getElementById('seedAnimation').classList.add('slide-in');
+
+                updateDisplay();
+                updateYieldProjection();
+                updateSeedMeter();
+                updateSimulator();
+
+                setTimeout(() => document.getElementById('seedAnimation').classList.add('hidden'), 3000);
+
+                checkMatches();
+                week++;
+                updateDisplay();
+            }, 1500);
+        }
+
+        function simulateScale() {
+            const ticketsToSim = 100000;
+            for (let i = 0; i < ticketsToSim; i++) {
+                buyTicketSim();
+            }
+            alert(`🚀 Simulated ${ticketsToSim.toLocaleString()} tickets (100k users/week)`);
+        }
+
+        function buyTicketSim() {
+            const TICKET_PRICE = 3;
+            totalRevenue += TICKET_PRICE;
+            const toPot = TICKET_PRICE * 0.65;
+            const seedAdd = toPot * 0.153846;
+            eternalSeed += seedAdd;
+            updateYieldProjection();
+            updateSeedMeter();
+            updateSimulator();
+        }
+
+        function checkMatches() {
+            let matches = 0;
+            for (let i = 0; i < 6; i++) {
+                if (winningCombo.includes(currentGuess[i])) matches++;
+            }
+            document.getElementById('matchCount').textContent = `${matches}/6`;
+            document.getElementById('matchResult').classList.remove('hidden');
+            document.getElementById('matchResult').classList.add('slide-in');
+        }
+
+        function updateDisplay() {
+            document.getElementById('potDisplay').textContent = `$${pot.toFixed(2)}`;
+            document.getElementById('treasuryDisplay').textContent = `$${treasury.toFixed(2)}`;
+            document.getElementById('weekDisplay').textContent = week;
+            document.getElementById('playersDisplay').textContent = players;
+        }
+
+        function updateSeedMeter() {
+            const maxForMeter = 10000000; // $10M = 100%
+            const percent = Math.min((eternalSeed / maxForMeter) * 100, 100);
+            document.getElementById('seedMeter').style.width = `${percent}%`;
+        }
+
+        function updateYieldProjection() {
+            const weeklyRevenue = totalRevenue; // Current rate
+            const annualRevenue = weeklyRevenue * WEEKS_PER_YEAR;
+            const annualSeedAdd = annualRevenue * 0.10;
+
+            let tesBalance = 0;
+            for (let y = 0; y < YEARS; y++) {
+                for (let w = 0; w < WEEKS_PER_YEAR; w++) {
+                    tesBalance += annualSeedAdd / WEEKS_PER_YEAR;
+                    tesBalance *= (1 + 0.05 / WEEKS_PER_YEAR);
+                }
+            }
+
+            const weeklyPrize = weeklyRevenue * 0.65;
+            const avgBalance = weeklyPrize / 2;
+            const aaveTotal = avgBalance * WEEKS_PER_YEAR * YEARS * 0.05;
+
+            const multiple = aaveTotal > 0 ? (tesBalance / aaveTotal).toFixed(0) : '∞';
+
+            document.getElementById('tesYield').textContent = `$${tesBalance.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
+            document.getElementById('aaveYield').textContent = `$${aaveTotal.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
+            document.getElementById('multiple').textContent = multiple;
+        }
+
+        function updateSimulator() {
+            const users = parseInt(document.getElementById('simUsers').value);
+            const seedPct = parseInt(document.getElementById('simSeed').value) / 100;
+            const apy = parseFloat(document.getElementById('simApy').value) / 100;
+            const winRate = parseInt(document.getElementById('simWin').value) / 100;
+
+            document.getElementById('simUsersVal').textContent = users.toLocaleString();
+            document.getElementById('simSeedVal').textContent = (seedPct*100).toFixed(0) + '%';
+            document.getElementById('simApyVal').textContent = (apy*100).toFixed(1) + '%';
+            document.getElementById('simWinVal').textContent = (winRate*100) + '%';
+
+            const weeklyRevenue = users * 3;
+            const weeklyPrize = weeklyRevenue * 0.65;
+            const weeklySeedBase = weeklyPrize * (seedPct / 0.65);
+            const weeklyRollover = winRate < 1 ? (weeklyPrize - weeklyPrize * winRate) : 0;
+
+            const tesData = [];
+            const aaveData = [];
+            let tesBal = 0;
+            let cumulativeAave = 0;
+
+            for (let y = 1; y <= YEARS; y++) {
+                for (let w = 0; w < WEEKS_PER_YEAR; w++) {
+                    tesBal += weeklySeedBase + (Math.random() > winRate ? weeklyPrize * (1 - winRate) : 0);
+                    tesBal *= (1 + apy / WEEKS_PER_YEAR);
+                    cumulativeAave += (weeklyPrize / 2) * (apy / WEEKS_PER_YEAR);
+                }
+                tesData.push(Math.round(tesBal));
+                aaveData.push(Math.round(cumulativeAave));
+            }
+
+            // Update Chart
+            if (chart) chart.destroy();
+            chart = new Chart(document.getElementById('growthChart'), {
+                type: 'line',
+                data: {
+                    labels: ['Year 1', 'Year 2', 'Year 3', 'Year 4', 'Year 5'],
+                    datasets: [
+                        {
+                            label: 'Eternal Seed Reserves',
+                            data: tesData,
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                            tension: 0.4,
+                            fill: true
+                        },
+                        {
+                            label: 'Plain Aave Yield',
+                            data: aaveData,
+                            borderColor: '#ef4444',
+                            backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                            tension: 0.4,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'top' } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+
+            // Update Table
+            const table = document.getElementById('simTable');
+            table.innerHTML = '';
+            for (let y = 1; y <= YEARS; y++) {
+                const multiple = aaveData[y-1] > 0 ? (tesData[y-1] / aaveData[y-1]).toFixed(0) : '∞';
+                table.innerHTML += `
+                    <tr class="border-b border-gray-700">
+                        <td class="py-2">${y}</td>
+                        <td class="py-2 text-green-400">$${tesData[y-1].toLocaleString()}</td>
+                        <td class="py-2 text-red-400">$${aaveData[y-1].toLocaleString()}</td>
+                        <td class="py-2 text-cyan-400">${multiple}x</td>
+                    </tr>
+                `;
+            }
+        }
+
+        // Initialize
+        initCharPicker();
+        updateDisplay();
+        updateYieldProjection();
+        updateSeedMeter();
+        updateSimulator();
+
+        // Slider listeners
+        ['simUsers', 'simSeed', 'simApy', 'simWin'].forEach(id => {
+            document.getElementById(id).addEventListener('input', updateSimulator);
+        });
+    </script>
+</body>
+</html>
