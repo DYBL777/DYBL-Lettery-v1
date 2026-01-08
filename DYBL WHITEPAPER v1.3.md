@@ -640,7 +640,7 @@ All parameters are configurable at deployment:
 
 ## About DYBL Foundation
 
-DYBL (Decentralised Yield Bearing Legacy) was created by an independent inventor, therapist, and blockchain researcher with 8 years of study in DeFi mechanisms and behavioural economics.
+DYBL (Decentralised Yield Bearing Legacy) was created by an independent inventor, therapist, and blockchain researcher with 8 years of study in DeFi mechanisms and human behaviour.
 
 **Mission:** Transform recurring payments into wealth-building tools accessible to everyone.
 
