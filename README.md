@@ -85,9 +85,9 @@ A lottery where every ticket earns yield.
 
 | Document | Description |
 |----------|-------------|
-| 📄 [Whitepaper](./DYBL_WHITEPAPER_v1.4.md) | Full mechanism specification |
+| 📄 [Whitepaper](https://github.com/DYBL777/DYBL-v1/blob/main/DYBL%20WHITEPAPER%20v1.4.1.md) | Full mechanism specification |
 | 📄 [Overflow](./THE_OVERFLOW_v1.4.1.md) | Expansion mechanism |
-| 📄 [Guardians](./THE_OVERFLOW_GUARDIANS_v1.md) | Governance model |
+| 📄 [Lettery.sol](https://github.com/DYBL777/DYBL-v1/blob/main/Lettery_v1.4.1.sol) | Governance model |
 
 ---
 
