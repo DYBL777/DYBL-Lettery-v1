@@ -419,9 +419,7 @@ But WHICH pots to create? WHICH partners to approve? HOW MUCH to allocate?
 
 Those decisions require judgment. Those decisions require governance.
 
-**See: [The Overflow: Why the Eternal Seed Needs Guardians](./THE_OVERFLOW_GUARDIANS_v1.md)**
-
-The Guardian paper explains:
+The Guardian paper explains: (coming soon)
 - Why human judgment is needed for expansion
 - Who should make these decisions
 - The proposed Guardian Council structure
