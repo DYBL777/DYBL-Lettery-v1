@@ -63,7 +63,7 @@ That "failure" made me a builder, not an idea guy.
 
 ## How Questions Work
 
-I've trained my mind to work a certain way. Took about 30 years.
+I've trained my mind to work a certain way. Still learning after 30 years.
 
 Ask a "how" question. A real one. To yourself. Then let it sit.
 
