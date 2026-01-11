@@ -287,7 +287,7 @@ Infrastructure.
 
 50-100 years. The Eternal Seed outlasts founders, outlasts companies, outlasts any single partner.
 
-Chainlink for oracles. Cyfrin for security. Aave for yield. Truflation for economic governance.
+Hopefully Chainlink for oracles. Cyfrin for security. Aave for yield. Truflation for economic governance.
 
 Infrastructure partners. Each essential. Each benefits when the system grows.
 
