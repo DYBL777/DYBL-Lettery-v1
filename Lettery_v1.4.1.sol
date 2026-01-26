@@ -729,9 +729,8 @@ contract Lettery is VRFConsumerBaseV2, Ownable, ReentrancyGuard {
         treasuryOperatingReserve += opsYield;
         treasuryGiftReserve += giftYield;
         
-        // Credit seed yield to prizePot (this is how the seed compounds!)
+        // Track seed yield (stays in Aave, never becomes prize money)
         if (seedYield > 0) {
-            prizePot += seedYield;
             totalSeedYieldMaterialized += seedYield;
             emit SeedYieldMaterialized(currentWeek, seedYield, prizePot);
         }
