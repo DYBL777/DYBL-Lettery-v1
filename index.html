@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DYBL Lettery - Demo</title>
+    <meta name="description" content="DYBL Lettery - The Eternal Seed Lottery Demo">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes flip {
+            0% { transform: rotateY(0deg); }
+            100% { transform: rotateY(720deg); }
+        }
+        .flip { animation: flip 0.6s ease-in-out; }
+        
+        @media (max-width: 640px) {
+            .char-box { width: 44px !important; height: 56px !important; font-size: 1.5rem !important; }
+            .char-btn { width: 36px !important; height: 36px !important; }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-gray-900 via-emerald-950 to-gray-900 min-h-screen text-white">
+    
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <div class="text-5xl mb-3">🌱</div>
+            <h1 class="text-4xl font-bold mb-2 bg-gradient-to-r from-emerald-400 to-green-300 bg-clip-text text-transparent">
+                DYBL LETTERY
+            </h1>
+            <p class="text-gray-400">The Eternal Seed Lottery - Demo</p>
+            <div class="mt-4 flex flex-wrap justify-center gap-3">
+                <a href="https://github.com/DYBL777/DYBL-Lettery-v1" target="_blank" 
+                   class="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition text-sm">
+                    📚 View Code
+                </a>
+                <a href="https://sepolia.basescan.org/address/0x4604044cE55fb4F28101c21282a7285B3500e0Ec" target="_blank"
+                   class="px-4 py-2 bg-emerald-800 hover:bg-emerald-700 rounded-lg transition text-sm">
+                    🔗 Live Contract (Testnet)
+                </a>
+            </div>
+        </header>
+
+        <!-- Stats -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+            <div class="bg-gray-800/50 rounded-xl p-4 border border-emerald-500/30 text-center">
+                <div class="text-xs text-gray-400 mb-1">Prize Pot</div>
+                <div id="potDisplay" class="text-2xl font-bold text-green-400">$0</div>
+            </div>
+            <div class="bg-gray-800/50 rounded-xl p-4 border border-purple-500/30 text-center">
+                <div class="text-xs text-gray-400 mb-1">Treasury</div>
+                <div id="treasuryDisplay" class="text-2xl font-bold text-purple-400">$0</div>
+            </div>
+            <div class="bg-gray-800/50 rounded-xl p-4 border border-yellow-500/30 text-center">
+                <div class="text-xs text-gray-400 mb-1">Week</div>
+                <div id="weekDisplay" class="text-2xl font-bold text-yellow-400">1</div>
+            </div>
+            <div class="bg-gray-800/50 rounded-xl p-4 border border-emerald-500/30 text-center">
+                <div class="text-xs text-gray-400 mb-1">🌱 Eternal Seed</div>
+                <div id="seedDisplay" class="text-2xl font-bold text-emerald-400">$0</div>
+            </div>
+        </div>
+
+        <!-- Game Area -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            
+            <!-- Pick Characters -->
+            <div class="bg-gray-800/50 rounded-xl p-6 border border-blue-500/30">
+                <h2 class="text-xl font-bold mb-4 text-center">🎫 Pick Your 6 Characters</h2>
+                
+                <!-- Your guess -->
+                <div class="flex justify-center gap-2 mb-6">
+                    <div id="char0" class="char-box w-12 h-16 bg-gray-700 rounded-lg flex items-center justify-center text-2xl font-bold border-2 border-blue-500/50">_</div>
+                    <div id="char1" class="char-box w-12 h-16 bg-gray-700 rounded-lg flex items-center justify-center text-2xl font-bold border-2 border-blue-500/50">_</div>
+                    <div id="char2" class="char-box w-12 h-16 bg-gray-700 rounded-lg flex items-center justify-center text-2xl font-bold border-2 border-blue-500/50">_</div>
+                    <div id="char3" class="char-box w-12 h-16 bg-gray-700 rounded-lg flex items-center justify-center text-2xl font-bold border-2 border-blue-500/50">_</div>
+                    <div id="char4" class="char-box w-12 h-16 bg-gray-700 rounded-lg flex items-center justify-center text-2xl font-bold border-2 border-blue-500/50">_</div>
+                    <div id="char5" class="char-box w-12 h-16 bg-gray-700 rounded-lg flex items-center justify-center text-2xl font-bold border-2 border-blue-500/50">_</div>
+                </div>
+                
+                <!-- Character picker (42 chars) -->
+                <div class="mb-4">
+                    <div class="text-xs text-gray-400 mb-2">Tap to select (42 characters):</div>
+                    <div id="charPicker" class="grid grid-cols-7 gap-1"></div>
+                </div>
+                
+                <!-- Buttons -->
+                <div class="flex gap-3">
+                    <button onclick="clearGuess()" class="flex-1 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg font-bold transition">
+                        Clear
+                    </button>
+                    <button onclick="buyTicket()" class="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 rounded-lg font-bold transition">
+                        🎫 Buy Ticket ($3)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Draw -->
+            <div class="bg-gray-800/50 rounded-xl p-6 border border-yellow-500/30">
+                <h2 class="text-xl font-bold mb-4 text-center">🎲 Weekly Draw</h2>
+                
+                <!-- Winning combo -->
+                <div class="mb-6">
+                    <div class="text-xs text-gray-400 mb-2 text-center">Winning Combination:</div>
+                    <div class="flex justify-center gap-2">
+                        <div id="win0" class="char-box w-12 h-16 bg-gray-700 rounded-lg flex items-center justify-center text-2xl font-bold border-2 border-yellow-500/50">?</div>
+                        <div id="win1" class="char-box w-12 h-16 bg-gray-700 rounded-lg flex items-center justify-center text-2xl font-bold border-2 border-yellow-500/50">?</div>
+                        <div id="win2" class="char-box w-12 h-16 bg-gray-700 rounded-lg flex items-center justify-center text-2xl font-bold border-2 border-yellow-500/50">?</div>
+                        <div id="win3" class="char-box w-12 h-16 bg-gray-700 rounded-lg flex items-center justify-center text-2xl font-bold border-2 border-yellow-500/50">?</div>
+                        <div id="win4" class="char-box w-12 h-16 bg-gray-700 rounded-lg flex items-center justify-center text-2xl font-bold border-2 border-yellow-500/50">?</div>
+                        <div id="win5" class="char-box w-12 h-16 bg-gray-700 rounded-lg flex items-center justify-center text-2xl font-bold border-2 border-yellow-500/50">?</div>
+                    </div>
+                </div>
+                
+                <!-- Draw button -->
+                <button onclick="forceDraw()" class="w-full py-4 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 rounded-lg font-bold text-lg mb-4 transition">
+                    🎲 Force Draw
+                </button>
+                
+                <!-- Result -->
+                <div id="result" class="p-4 rounded-lg text-center hidden"></div>
+            </div>
+        </div>
+
+        <!-- How It Works -->
+        <div class="bg-gray-800/50 rounded-xl p-6 border border-gray-700 mb-8">
+            <h2 class="text-lg font-bold mb-4 text-center">How It Works</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-center">
+                <div>
+                    <div class="text-2xl mb-2">🎫</div>
+                    <div class="text-gray-300">Buy a $3 ticket</div>
+                    <div class="text-gray-500 text-xs">65% → Prizes, 35% → Treasury</div>
+                </div>
+                <div>
+                    <div class="text-2xl mb-2">🌱</div>
+                    <div class="text-gray-300">Seed grows forever</div>
+                    <div class="text-gray-500 text-xs">10% of prizes locked permanently</div>
+                </div>
+                <div>
+                    <div class="text-2xl mb-2">📈</div>
+                    <div class="text-gray-300">No winner? Rolls over</div>
+                    <div class="text-gray-500 text-xs">Prize floor only rises</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="text-center py-6 border-t border-gray-800">
+            <div class="text-xl mb-2">🌱</div>
+            <p class="text-gray-500 text-sm">DYBL Foundation</p>
+            <div class="flex justify-center gap-4 text-sm mt-2">
+                <a href="https://github.com/DYBL777" target="_blank" class="text-gray-500 hover:text-emerald-400">GitHub</a>
+                <a href="https://x.com/DYBL77" target="_blank" class="text-gray-500 hover:text-emerald-400">Twitter</a>
+            </div>
+            <p class="text-xs text-gray-600 mt-3">Demo only. Testnet contract.</p>
+        </footer>
+    </div>
+
+    <script>
+        // State
+        let pot = 0;
+        let treasury = 0;
+        let seed = 0;
+        let week = 1;
+        let currentGuess = ['_', '_', '_', '_', '_', '_'];
+        let currentPos = 0;
+        let winningCombo = ['?', '?', '?', '?', '?', '?'];
+
+        // 42 characters: A-Z (26) + 0-9 (10) + 6 symbols
+        const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&'.split('');
+        const TICKET = 3;
+
+        // Init character picker
+        function init() {
+            const picker = document.getElementById('charPicker');
+            CHARS.forEach(char => {
+                const btn = document.createElement('button');
+                btn.textContent = char;
+                btn.className = 'char-btn w-9 h-9 bg-gray-700 hover:bg-emerald-600 rounded font-bold transition text-sm';
+                btn.onclick = () => addChar(char);
+                picker.appendChild(btn);
+            });
+        }
+
+        function addChar(char) {
+            if (currentPos < 6) {
+                currentGuess[currentPos] = char;
+                const el = document.getElementById(`char${currentPos}`);
+                el.textContent = char;
+                el.classList.add('flip');
+                setTimeout(() => el.classList.remove('flip'), 600);
+                currentPos++;
+            }
+        }
+
+        function clearGuess() {
+            currentGuess = ['_', '_', '_', '_', '_', '_'];
+            currentPos = 0;
+            for (let i = 0; i < 6; i++) {
+                document.getElementById(`char${i}`).textContent = '_';
+            }
+            document.getElementById('result').classList.add('hidden');
+        }
+
+        function buyTicket() {
+            if (currentPos < 6) {
+                showResult('⚠️ Pick all 6 characters first!', 'warning');
+                return;
+            }
+
+            // Split: 65% prize, 35% treasury
+            const toPrize = TICKET * 0.65;  // $1.95
+            const toTreasury = TICKET * 0.35;  // $1.05
+
+            // Of prize: 10% to seed, 55% to payout pool
+            const toSeed = toPrize * (10/65);  // ~$0.30
+            const toPayout = toPrize * (55/65);  // ~$1.65
+
+            seed += toSeed;
+            pot += toPayout;
+            treasury += toTreasury;
+
+            updateDisplay();
+            showResult('✅ Ticket bought! Your guess: ' + currentGuess.join(''), 'success');
+        }
+
+        function forceDraw() {
+            if (pot === 0 && seed === 0) {
+                showResult('⚠️ Buy a ticket first!', 'warning');
+                return;
+            }
+
+            // Generate random winning combo
+            winningCombo = Array(6).fill(0).map(() => CHARS[Math.floor(Math.random() * CHARS.length)]);
+
+            // Animate reveal
+            for (let i = 0; i < 6; i++) {
+                setTimeout(() => {
+                    const el = document.getElementById(`win${i}`);
+                    el.textContent = winningCombo[i];
+                    el.classList.add('flip');
+                    setTimeout(() => el.classList.remove('flip'), 600);
+                }, i * 150);
+            }
+
+            // Check result after animation
+            setTimeout(() => {
+                // 50% chance of winner (for demo)
+                const hasWinner = Math.random() > 0.5;
+
+                if (hasWinner) {
+                    showResult('🎉 Winner this week! $' + pot.toFixed(2) + ' paid out. Seed untouched.', 'success');
+                    pot = 0;
+                } else {
+                    const rollover = pot;
+                    seed += pot;
+                    pot = 0;
+                    showResult('📈 No winner! $' + rollover.toFixed(2) + ' rolled into Eternal Seed!', 'seed');
+                }
+
+                week++;
+                updateDisplay();
+            }, 1200);
+        }
+
+        function updateDisplay() {
+            document.getElementById('potDisplay').textContent = '$' + pot.toFixed(0);
+            document.getElementById('treasuryDisplay').textContent = '$' + treasury.toFixed(0);
+            document.getElementById('seedDisplay').textContent = '$' + seed.toFixed(0);
+            document.getElementById('weekDisplay').textContent = week;
+        }
+
+        function showResult(msg, type) {
+            const el = document.getElementById('result');
+            el.classList.remove('hidden');
+            el.textContent = msg;
+            
+            // Reset classes
+            el.className = 'p-4 rounded-lg text-center';
+            
+            if (type === 'success') {
+                el.classList.add('bg-green-900/50', 'border', 'border-green-500/50');
+            } else if (type === 'warning') {
+                el.classList.add('bg-yellow-900/50', 'border', 'border-yellow-500/50');
+            } else if (type === 'seed') {
+                el.classList.add('bg-emerald-900/50', 'border', 'border-emerald-500/50');
+            }
+        }
+
+        // Init on load
+        init();
+    </script>
+</body>
+</html>
