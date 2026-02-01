@@ -9,7 +9,7 @@ pragma solidity ^0.8.24;
  * @title DYBL - Decentralised Yield Bearing Legacy
  * @notice "The Eternal Seed" - A Self-Sustaining Capital Retention Mechanism
  * @author DYBL Foundation
- * @dev Lettery_AuditReady_v1.4.1.sol
+ * @dev Lettery_v1.5.sol
  *
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
  * THE ETERNAL SEED MECHANISM - COMPLETE EXPLANATION
@@ -187,7 +187,7 @@ pragma solidity ^0.8.24;
  * PART 8: SUMMARY
  * ─────────────────────────────────────────────────────────────────────────────────────────────────
  *
- *   TODAY (V1.4.1 - Fixed Lottery Model):
+ *   TODAY (V1.5 - Fixed Lottery Model + VRF V2.5):
  *   - ALL users buy tickets to participate (no deposit-only option)
  *   - 10% of every ticket → Eternal Seed (never paid out)
  *   - 55% of every ticket → Prize Pool (to winners)
@@ -195,6 +195,8 @@ pragma solidity ^0.8.24;
  *   - Ticket money (principal) → STAYS IN SYSTEM FOREVER
  *   - Aave yield → Claimable by users OR gamble for more tickets
  *   - Pot grows via: seed + seed yield + tickets + rollovers + forfeit yield
+ *   - Chainlink VRF V2.5 for provably fair randomness
+ *   - Deployed on Base (L2) for low gas costs
  *
  *   FUTURE (V2 - Rolling Seed + Saver/Gambler Toggle + Cashback):
  *   - Everything above PLUS:
@@ -211,8 +213,68 @@ pragma solidity ^0.8.24;
  *
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
  *
+ * VRF V2.5 MIGRATION NOTES
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Migrated from Chainlink VRF V2 → V2.5 for Base Sepolia / Base Mainnet deployment.
+ * VRF V2 is deprecated (Nov 2024). V2.5 is required for Base chain.
+ *
+ * CHANGES FROM V1.4.1:
+ * ─────────────────────────────────────────────────────────────────────────────────────────────
+ *
+ * [V2.5-01] IMPORTS: VRFConsumerBaseV2 → VRFConsumerBaseV2Plus + VRFV2PlusClient
+ * [V2.5-02] INHERITANCE: Removed OZ Ownable (VRFConsumerBaseV2Plus includes ConfirmedOwner)
+ *           - ConfirmedOwner provides onlyOwner modifier (same as before)
+ *           - Uses 2-step transfer (transferOwnership → acceptOwnership) - MORE secure
+ *           - To lock contract forever: transfer to address(0) is NOT possible
+ *             with ConfirmedOwner - add renounceOwnership() if needed later
+ * [V2.5-03] COORDINATOR: Removed immutable COORDINATOR variable
+ *           - V2.5 base contract provides s_vrfCoordinator (public, upgradeable)
+ * [V2.5-04] SUBSCRIPTION ID: uint64 → uint256 (V2.5 uses larger IDs)
+ * [V2.5-05] REQUEST FORMAT: requestRandomWords now uses struct-based call
+ *           - Includes nativePayment option (can pay with ETH instead of LINK)
+ * [V2.5-06] CALLBACK: fulfillRandomWords parameter changed from memory → calldata
+ * [V2.5-07] DEPLOY TARGET: Base Sepolia (chainId: 84532) / Base Mainnet (chainId: 8453)
+ * [V2.5-08] COMPILATION: Removed `constant` from array declarations (Solidity limitation),
+ *           changed _generateMemeCombo from `pure` to `view`
+ *
+ * ALL GAME LOGIC, YIELD MECHANICS, AND ACCOUNTING ARE UNCHANGED.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * BASE SEPOLIA DEPLOYMENT ADDRESSES
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ *   VRF Coordinator (V2.5): 0x5C210eF41CD1a72de73bF76eC39637bB0d3d7BEE
+ *   Key Hash (30 gwei):     0x9e1344a1247c8a1785d0a4681a27152bffdb43666ae5bf7d14d24a5efd44bf71
+ *   LINK Token:             0xE4aB69C077896252FAFBD49EFD26B5D171A32410
+ *   Aave V3 Pool:           0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951
+ *   USDC (testnet):         0xba50cd2a20f6da35d788639e581bca8d0b5d4d5f
+ *   aUSDC (testnet):        0x10F1A9D11CDf50041f3f8cB7191CBe2f31750ACC
+ *
+ *   Deployed Contract:      0x8a7d6c3c0361de6ffc90d5b5e8c42d15d6b0b903
+ *   VRF Subscription:       95130852569994825931593448644391808821055224185718417806789928080677314613110
+ *
+ *   VRF Dashboard:          https://vrf.chain.link/base-sepolia
+ *   Testnet LINK:           https://faucets.chain.link/base-sepolia
+ *   Testnet ETH:            https://faucets.chain.link/base-sepolia
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
  * CHANGELOG
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * V1.5 VRF V2.5 MIGRATION + COMPILATION FIXES (from v1.4.1):
+ * - [V2.5-01] Replaced VRFConsumerBaseV2 with VRFConsumerBaseV2Plus
+ * - [V2.5-02] Replaced OZ Ownable with ConfirmedOwner (from V2Plus base)
+ * - [V2.5-03] Removed COORDINATOR immutable, uses s_vrfCoordinator from base
+ * - [V2.5-04] subscriptionId: uint64 → uint256
+ * - [V2.5-05] _requestRandomness() uses VRFV2PlusClient.RandomWordsRequest struct
+ * - [V2.5-06] fulfillRandomWords: memory → calldata
+ * - [V2.5-07] Added nativePayment toggle (default: false = pay with LINK)
+ * - [V2.5-08] updateVRFParameters: uint64 → uint256 for subId
+ * - [COMPILE-01] Removed `constant` from MEME_ALPHABET array (Solidity array limitation)
+ * - [COMPILE-02] Removed `constant` from TIERS_PERCENT array (Solidity array limitation)
+ * - [COMPILE-03] Changed _generateMemeCombo from `pure` to `view` (reads state array)
  *
  * V1.4.1 LOTTERY MODEL FIX:
  * - [FIX-SOLVENCY-01] Removed withdrawSavings() - was causing insolvency by withdrawing already-allocated principal
@@ -252,15 +314,18 @@ pragma solidity ^0.8.24;
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
-import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
-import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
+// [V2.5-01] New imports for VRF V2.5
+import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
+import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+// [V2.5-02] Removed: import "@openzeppelin/contracts/access/Ownable.sol";
+//           ConfirmedOwner is inherited via VRFConsumerBaseV2Plus
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@aave/core-v3/contracts/interfaces/IPool.sol";
 
-contract Lettery is VRFConsumerBaseV2, Ownable, ReentrancyGuard {
+// [V2.5-02] Removed Ownable from inheritance - ConfirmedOwner from V2Plus base provides onlyOwner
+contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -314,15 +379,19 @@ contract Lettery is VRFConsumerBaseV2, Ownable, ReentrancyGuard {
     address public immutable USDC;
     address public immutable aUSDC;
     address public immutable AAVE_POOL;
-    VRFCoordinatorV2Interface public immutable COORDINATOR;
+    // [V2.5-03] Removed: VRFCoordinatorV2Interface public immutable COORDINATOR;
+    //           V2.5 base contract provides s_vrfCoordinator (public getter)
     uint256 public immutable DEPLOY_TIMESTAMP;
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     // UPDATEABLE VRF PARAMETERS
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     
-    uint64 public subscriptionId;
+    // [V2.5-04] uint64 → uint256 (V2.5 uses larger subscription IDs)
+    uint256 public subscriptionId;
     bytes32 public keyHash;
+    // [V2.5-07] Option to pay VRF fees with native ETH instead of LINK
+    bool public useNativePayment;
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     // CONFIGURABLE PARAMETERS
@@ -340,7 +409,8 @@ contract Lettery is VRFConsumerBaseV2, Ownable, ReentrancyGuard {
     // 42-CHARACTER MEME ALPHABET
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     
-    bytes1[42] public constant MEME_ALPHABET = [
+    // [COMPILE-01] Removed `constant` - Solidity doesn't support constant for non-value-type arrays
+    bytes1[42] public MEME_ALPHABET = [
         bytes1(0x41),0x42,0x43,0x44,0x45,0x46,0x47,0x48,0x49,0x4A,
         0x4B,0x4C,0x4D,0x4E,0x4F,0x50,0x51,0x52,0x53,0x54,
         0x55,0x56,0x57,0x58,0x59,0x5A,
@@ -353,7 +423,8 @@ contract Lettery is VRFConsumerBaseV2, Ownable, ReentrancyGuard {
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     
     uint256 public constant TICKET_PRICE = 3e6;
-    uint256[5] public constant TIERS_PERCENT = [4000, 2500, 2000, 1000, 500];
+    // [COMPILE-02] Removed `constant` - Solidity doesn't support constant for non-value-type arrays
+    uint256[5] public TIERS_PERCENT = [4000, 2500, 2000, 1000, 500];
     uint256 public constant MAX_TOTAL_ENTRIES_PER_WEEK = 5000;
     uint256 public constant MAX_GUESSES_PER_USER = 5;
     uint256 public constant MAX_PAYOUTS_PER_TX = 100;
@@ -459,10 +530,13 @@ contract Lettery is VRFConsumerBaseV2, Ownable, ReentrancyGuard {
     event TreasuryWithdrawal(uint256 amount, address recipient);
     event TreasuryGiftWithdrawal(uint256 amount, address recipient);
     event EmergencyReset(uint256 indexed week, DrawPhase fromPhase, string reason);
-    event VRFParametersUpdated(uint64 newSubId, bytes32 newKeyHash);
+    // [V2.5-08] Updated event signature for uint256 subId
+    event VRFParametersUpdated(uint256 newSubId, bytes32 newKeyHash);
     event YieldForfeited(address indexed user, uint256 amount, uint256 toTreasury, uint256 toPot);
     event VRFRequestReset(uint256 indexed requestId);
     event SeedYieldMaterialized(uint256 indexed week, uint256 amount, uint256 newPrizePot);
+    // [V2.5-07] New event for payment method toggle
+    event NativePaymentUpdated(bool useNative);
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     // CONSTRUCTOR
@@ -470,7 +544,7 @@ contract Lettery is VRFConsumerBaseV2, Ownable, ReentrancyGuard {
     
     constructor(
         address _vrfCoordinator,
-        uint64 _subId,
+        uint256 _subId,              // [V2.5-04] was uint64
         bytes32 _keyHash,
         address _usdc,
         address _aavePool,
@@ -481,7 +555,7 @@ contract Lettery is VRFConsumerBaseV2, Ownable, ReentrancyGuard {
         uint256 _heirEligibilityYears,
         uint256 _heirClaimYears,
         uint256 _mulliganMonths
-    ) VRFConsumerBaseV2(_vrfCoordinator) {
+    ) VRFConsumerBaseV2Plus(_vrfCoordinator) {   // [V2.5-01] was VRFConsumerBaseV2
         if (_vrfCoordinator == address(0)) revert InvalidAddress();
         if (_usdc == address(0)) revert InvalidAddress();
         if (_aavePool == address(0)) revert InvalidAddress();
@@ -500,7 +574,8 @@ contract Lettery is VRFConsumerBaseV2, Ownable, ReentrancyGuard {
         if (_subId == 0) revert ExceedsLimit();
         if (_keyHash == bytes32(0)) revert InvalidAddress();
         
-        COORDINATOR = VRFCoordinatorV2Interface(_vrfCoordinator);
+        // [V2.5-03] Removed: COORDINATOR = VRFCoordinatorV2Interface(_vrfCoordinator);
+        //           s_vrfCoordinator is set by VRFConsumerBaseV2Plus constructor
         subscriptionId = _subId;
         keyHash = _keyHash;
         USDC = _usdc;
@@ -520,6 +595,7 @@ contract Lettery is VRFConsumerBaseV2, Ownable, ReentrancyGuard {
         lastDrawTimestamp = block.timestamp;
         drawPhase = DrawPhase.IDLE;
         currentWeek = 1;
+        useNativePayment = false;  // [V2.5-07] Default: pay with LINK
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -739,23 +815,30 @@ contract Lettery is VRFConsumerBaseV2, Ownable, ReentrancyGuard {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
-    // PHASE 1: VRF
+    // PHASE 1: VRF  [V2.5-05] Updated request format
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     
     function _requestRandomness() internal {
         if (pendingRequestId != 0) revert VRFPending();
         
-        pendingRequestId = COORDINATOR.requestRandomWords(
-            keyHash,
-            subscriptionId,
-            3,
-            200000,
-            1
+        // [V2.5-05] V2.5 uses struct-based request via s_vrfCoordinator
+        pendingRequestId = s_vrfCoordinator.requestRandomWords(
+            VRFV2PlusClient.RandomWordsRequest({
+                keyHash: keyHash,
+                subId: subscriptionId,
+                requestConfirmations: 3,
+                callbackGasLimit: 200000,
+                numWords: 1,
+                extraArgs: VRFV2PlusClient._argsToBytes(
+                    VRFV2PlusClient.ExtraArgsV1({nativePayment: useNativePayment})
+                )
+            })
         );
         lastRequestTimestamp = block.timestamp;
     }
 
-    function fulfillRandomWords(uint256 requestId, uint256[] memory randomWords) internal override {
+    // [V2.5-06] Changed: memory → calldata for randomWords parameter
+    function fulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) internal override {
         if (requestId != pendingRequestId) revert WrongPhase();
         pendingRequestId = 0;
         
@@ -1188,7 +1271,8 @@ contract Lettery is VRFConsumerBaseV2, Ownable, ReentrancyGuard {
         return false;
     }
 
-    function _generateMemeCombo(uint256 randomness) internal pure returns (string memory) {
+    // [COMPILE-03] Changed from `pure` to `view` - reads MEME_ALPHABET state variable
+    function _generateMemeCombo(uint256 randomness) internal view returns (string memory) {
         bytes1[42] memory chars = MEME_ALPHABET;
         bytes memory combo = new bytes(GUESS_LENGTH);
         uint256 rand = randomness;
@@ -1392,6 +1476,8 @@ contract Lettery is VRFConsumerBaseV2, Ownable, ReentrancyGuard {
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     // OWNER FUNCTIONS
+    // [V2.5-02] onlyOwner modifier comes from ConfirmedOwner (via VRFConsumerBaseV2Plus)
+    //           Ownership transfer is now 2-step: transferOwnership() → acceptOwnership()
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     
     function increasePayoutPercent(uint256 newBps) external onlyOwner {
@@ -1433,7 +1519,8 @@ contract Lettery is VRFConsumerBaseV2, Ownable, ReentrancyGuard {
         emit TreasuryGiftWithdrawal(amount, recipient);
     }
 
-    function updateVRFParameters(uint64 newSubId, bytes32 newKeyHash) external onlyOwner {
+    // [V2.5-08] Updated: uint64 → uint256 for subscription ID
+    function updateVRFParameters(uint256 newSubId, bytes32 newKeyHash) external onlyOwner {
         if (pendingRequestId != 0) revert VRFPending();
         if (newSubId == 0) revert ExceedsLimit();
         if (newKeyHash == bytes32(0)) revert InvalidAddress();
@@ -1442,6 +1529,12 @@ contract Lettery is VRFConsumerBaseV2, Ownable, ReentrancyGuard {
         keyHash = newKeyHash;
         
         emit VRFParametersUpdated(newSubId, newKeyHash);
+    }
+
+    // [V2.5-07] Toggle between LINK and native ETH payment for VRF
+    function setNativePayment(bool _useNative) external onlyOwner {
+        useNativePayment = _useNative;
+        emit NativePaymentUpdated(_useNative);
     }
 
     function triggerDraw() external {
@@ -1537,11 +1630,16 @@ contract Lettery is VRFConsumerBaseV2, Ownable, ReentrancyGuard {
     // Core vault is immutable. Game rules can be upgraded via proxy + multisig later.
     // No backdoors today — onlyOwner functions are minimal and one-way.
     //
-    // Immutable (cannot change):     USDC, aUSDC, AAVE_POOL, COORDINATOR, DEPLOY_TIMESTAMP
+    // Immutable (cannot change):     USDC, aUSDC, AAVE_POOL, DEPLOY_TIMESTAMP
     // One-way only (user-friendly):  payoutBps can only INCREASE, treasuryTakeBps can only DECREASE
     // Emergency only:                Reset stuck draws (cannot drain funds)
     //
-    // To make fully trustless: call renounceOwnership() to lock forever.
+    // [V2.5-02] Ownership note:
+    //   ConfirmedOwner uses 2-step transfer (transferOwnership → acceptOwnership)
+    //   This is MORE secure than OZ Ownable's single-step transfer.
+    //   To make fully trustless: transfer ownership to a multisig or timelock.
+    //   Note: ConfirmedOwner does NOT have renounceOwnership().
+    //   If needed, add a custom implementation or transfer to address(dead).
     //
     // ═══════════════════════════════════════════════════════════════════════════════════════════
 }
