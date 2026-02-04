@@ -9,236 +9,82 @@ pragma solidity ^0.8.24;
  * @title DYBL - Decentralised Yield Bearing Legacy
  * @notice "The Eternal Seed" - A Self-Sustaining Capital Retention Mechanism
  * @author DYBL Foundation
- * @dev Lettery_v1.5.sol
+ * @dev Lettery_v1.6.6.sol - 42-Character Flagship with Fair Time-Weighted Yield
  *
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
- * THE ETERNAL SEED MECHANISM - COMPLETE EXPLANATION
+ * V1.6.6 - PROPORTIONAL YIELD ATTRIBUTION + TIME-WEIGHTED FAIRNESS
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
  *
- * PART 1: REVENUE SPLIT (Per $3 Ticket)
- * ─────────────────────────────────────────────────────────────────────────────────────────────────
+ * CRITICAL FIX FROM V1.5:
+ *   V1.5 had two yield problems:
+ *   1. _materializeYields() only tracked seed yield, didn't actually compound the pot
+ *   2. All unallocated yield went to users, including yield earned by pot/treasury
+ *
+ * V1.6.6 SOLUTION:
+ *   Proportional yield attribution at each draw:
+ *   - Prize pot earns yield proportional to its size -> STAYS IN POT -> ETERNAL SEED COMPOUNDS
+ *   - Treasury ops earns yield proportional to its size -> stays in treasury ops
+ *   - Treasury gift earns yield proportional to its size -> stays in treasury gift
+ *   - Users earn yield proportional to their balance -> via globalYieldIndex (time-weighted)
+ *
+ * THE ETERNAL SEED MODEL:
+ *   - 65% of ticket goes to ONE prize pot
+ *   - payoutBps (default 8462) controls max payout (~84.62% of pot)
+ *   - Remaining ~15.38% is the seed, stays forever, compounds with whole pot
+ *   - Seed is NOT a separate bucket. It's the unpayable portion of the pot.
+ *   - Pot earns Aave yield. Yield stays in pot. Floor only rises.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * CHANGELOG V1.6.6 (from V1.5)
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * [V1.6.6-01] Replaced _materializeYields() with _updateGlobalYieldIndex()
+ *             - Proportional yield to pot/treasury/users
+ *             - Prize pot now actually compounds (THE ETERNAL SEED)
+ * [V1.6.6-02] Added epoch-based time-weighted yield tracking
+ *             - globalYieldIndex: cumulative yield per token
+ *             - userYieldIndex: user's index at last settlement
+ *             - accumulatedYield: settled yield waiting to be claimed
+ *             - _settleYield(): called before any balance change
+ * [V1.6.6-03] Added anniversary-only yield cash claims
+ *             - claimYieldAsCash() now requires isAnniversary()
+ *             - 7-day window around each yearly anniversary
+ * [V1.6.6-04] Added totalPrizesWon mapping for lifetime prize tracking
+ * [V1.6.6-05] Removed SEED_BPS_OF_POT constant (seed = 10000 - payoutBps implicitly)
+ * [V1.6.6-06] Removed totalSeedYieldMaterialized (replaced by pot compounding)
+ * [V1.6.6-07] Updated events: GlobalYieldIndexUpdated, YieldSettled
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * 42-CHARACTER LETTERY (FLAGSHIP)
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * CHARACTER SET: A-Z (26) + 0-9 (10) + !@#$%& (6) = 42 characters
+ * PICK COUNT:    6 unique characters per ticket
+ * JACKPOT ODDS:  42C6 = 5,245,786 combinations (~1 in 5.2 million)
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * REVENUE SPLIT (Per $3 Ticket)
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
  *
  *   $3 Ticket Purchase
  *   │
- *   ├── 65% ($1.95) → Prize Pot (in Aave)
- *   │   ├── 55% ($1.65) → Prize Pool (paid to winners)
- *   │   └── 10% ($0.30) → Eternal Seed (NEVER LEAVES)
+ *   ├── 65% ($1.95) → Prize Pot (ONE pot in Aave, seed is unpayable portion)
+ *   │                 - payoutBps controls max payout (~84.6% of pot)
+ *   │                 - Remaining ~15.4% is the "Eternal Seed" (never paid out)
+ *   │                 - Whole pot earns yield, whole pot compounds
  *   │
- *   └── 35% ($1.05) → Treasury (separate Aave account, same vault for transparency)
- *       ├── 20% ($0.60) → Giveaway Reserve (cashbacks + gambler free tickets)
+ *   └── 35% ($1.05) → Treasury
+ *       ├── 20% ($0.60) → Giveaway Reserve
  *       └── 15% ($0.45) → Operations
  *
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
- *
- * PART 2: AAVE YIELD ALLOCATION
- * ─────────────────────────────────────────────────────────────────────────────────────────────────
- *
- *   All funds sit in Aave earning yield. Here's where that yield goes:
- *
- *   ┌─────────────────────────┬───────────────────────────────────────────────────┐
- *   │ Bucket                  │ Aave Yield Goes To                                │
- *   ├─────────────────────────┼───────────────────────────────────────────────────┤
- *   │ 10% Seed (in pot)       │ SEED → Pot compounds forever!                     │
- *   │ 55% Prize Pool (in pot) │ USERS → Proportional yield share                  │
- *   │ 15% Ops Treasury        │ TREASURY → Operational growth                     │
- *   │ 20% Giveaway (idle)     │ TREASURY → Until injected                         │
- *   │ 20% Giveaway (injected) │ SEED → Pot grows while helping! (V2)              │
- *   └─────────────────────────┴───────────────────────────────────────────────────┘
- *
- *   Implementation: _materializeYields()
- *   - Called at start of each draw (calculateMatches)
- *   - Calculates proportional share of Aave yield for each bucket
- *   - Credits yield to appropriate reserves before payout calculations
- *   - Seed = 10/65 (~15.38%) of prizePot value
- *   - Gas efficient: runs once per week during draw
- *
- *   V2 Future: Truflation/Chainlink Automation periodic rebalancing (see Part 4)
- *
+ * YIELD CLAIM RULES
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
  *
- * PART 3: FIXED ETERNAL SEED (Always Active)
- * ─────────────────────────────────────────────────────────────────────────────────────────────────
- *
- *   The 10% Eternal Seed:
- *   - 10% of every ticket goes to seed portion of prize pot
- *   - Seed earns Aave yield (materialized at each draw via _materializeYields)
- *   - Seed is NEVER paid out to winners
- *
- *   Weekly Draw Outcomes:
- *   - Jackpot WON (6/6): Jackpot paid from 55% pool, seed stays
- *   - Jackpot NOT won: Jackpot portion ROLLS OVER, tier winners still paid
- *   - Seed ALWAYS stays regardless of outcome
- *
- *   Prize Pool Tiers (from the 55%):
- *   ┌─────────────────┬─────────────────────────────────────────────────┐
- *   │ Tier 1: 6/6     │ JACKPOT - rolls over if no winner              │
- *   │ Tier 2: 5/6     │ Paid weekly if winners                         │
- *   │ Tier 3: 4/6     │ Paid weekly if winners                         │
- *   │ Tier 4: 3/6     │ Paid weekly if winners                         │
- *   │ Tier 5: 2/6     │ Paid weekly if winners                         │
- *   └─────────────────┴─────────────────────────────────────────────────┘
- *
- *   How Seed VALUE Grows (percentage stays 10%):
- *   ┌─────────┬────────────┬─────────────────────────────────────────────┐
- *   │ Week    │ Seed Value │ Why It Grew                                 │
- *   ├─────────┼────────────┼─────────────────────────────────────────────┤
- *   │ Week 1  │ $1,000     │ 10% of ticket sales                         │
- *   │ Week 2  │ $1,050     │ + Aave yield on seed + new tickets          │
- *   │ Week 10 │ $5,500     │ + Jackpot rollovers (no 6/6 winner)         │
- *   │ Week 52 │ $50,000+   │ Compounding never stops                     │
- *   └─────────┴────────────┴─────────────────────────────────────────────┘
- *
- * ═══════════════════════════════════════════════════════════════════════════════════════════════
- *
- * PART 4: ROLLING SEED (Future Enhancement - V2)
- * ─────────────────────────────────────────────────────────────────────────────────────────────────
- *
- *   The Opportunity:
- *   - The 20% Giveaway Reserve is over-funded (only ~10% paid out Year 1)
- *   - ~90% sits idle most of the year
- *   - Idle capital could work harder FOR THE POT
- *
- *   The Solution:
- *   - Truflation oracle OR Chainlink Automation monitors prize pot health
- *   - When pot needs boost: INJECT from idle Giveaway Reserve
- *   - When pot stabilizes: WITHDRAW back to Treasury
- *   - Micro-adjustments ensure continuous growth
- *
- *   V2 Integration Options:
- *   - Truflation oracles for economic data triggers
- *   - Chainlink Automation for time/condition-based triggers
- *   - Hybrid approach combining both
- *
- * ═══════════════════════════════════════════════════════════════════════════════════════════════
- *
- * PART 5: THE WIN-WIN (Why Treasury Injection Benefits EVERYONE)
- * ─────────────────────────────────────────────────────────────────────────────────────────────────
- *
- *   The Core Idea: Pot growth >> Aave yield alone (in high-growth periods)
- *
- *   Who Benefits:
- *   ┌─────────────────┬───────────────────────────────────────────────────────────┐
- *   │ Prize Pot       │ Gets Aave yield from seed + injected funds                │
- *   ├─────────────────┼───────────────────────────────────────────────────────────┤
- *   │ Treasury        │ Pot growth >> Aave yield in active periods                │
- *   │                 │ Over-funded anyway (only ~10% paid out Year 1)            │
- *   ├─────────────────┼───────────────────────────────────────────────────────────┤
- *   │ Users           │ Get Aave yield from 55% prize pool portion                │
- *   │                 │ Prize pot always healthy = better prizes                  │
- *   └─────────────────┴───────────────────────────────────────────────────────────┘
- *
- *   Risk Assessment (Honest Evaluation):
- *   - MINIMAL RISK - Asymmetric Upside
- *   - Funds are BORROWED, not given away (principal always returns)
- *   - Treasury benefit depends on pot growth outpacing Aave yield
- *   - High-growth periods: Treasury wins big
- *   - Slow periods: Treasury may underperform vs holding
- *   - Overall: Limited downside, high upside potential
- *
- * ═══════════════════════════════════════════════════════════════════════════════════════════════
- *
- * PART 6: WHY THE POT CAN ONLY GROW (Under Normal Conditions)
- * ─────────────────────────────────────────────────────────────────────────────────────────────────
- *
- *   Growth Sources (All Compound Together):
- *   ┌─────────────────────────────────────────────────────────────────────────────┐
- *   │  1. Fixed 10% Seed      │ Never leaves, accumulates forever               │
- *   ├─────────────────────────────────────────────────────────────────────────────┤
- *   │  2. Seed Aave Yield     │ Materialized at each draw via _materializeYields│
- *   ├─────────────────────────────────────────────────────────────────────────────┤
- *   │  3. Ticket Sales        │ 65% of every $3 ticket adds to pot              │
- *   ├─────────────────────────────────────────────────────────────────────────────┤
- *   │  4. Jackpot Rollovers   │ No 6/6 winner = jackpot portion stays in pot    │
- *   ├─────────────────────────────────────────────────────────────────────────────┤
- *   │  5. Forfeit Yield       │ Broken streaks → 50% to pot                     │
- *   ├─────────────────────────────────────────────────────────────────────────────┤
- *   │  6. Injected Fund Yield │ Treasury injection Aave yield → pot (V2)        │
- *   └─────────────────────────────────────────────────────────────────────────────┘
- *
- *   Under normal operating conditions, the pot floor only rises.
- *   Note: Not immune to smart contract risk, protocol exploits, or stablecoin depegs.
- *
- * ═══════════════════════════════════════════════════════════════════════════════════════════════
- *
- * PART 7: LOTTERY MODEL - TICKET MONEY IS SPENT
- * ─────────────────────────────────────────────────────────────────────────────────────────────────
- *
- *   KEY DESIGN PRINCIPLE:
- *   - When you buy a lottery ticket, that money is SPENT (like any lottery)
- *   - Your $3 goes to prizePot + treasury - it's allocated immediately
- *   - You CANNOT withdraw your ticket money (principal)
- *   - What you CAN do: claim your proportional share of Aave YIELD
- *
- *   This is MORE generous than traditional lotteries:
- *   - Traditional: Buy ticket → money gone forever
- *   - DYBL: Buy ticket → money funds prizes, BUT you earn yield on your stake
- *
- *   User Options:
- *   - claimYieldAsCash() → Take your yield as USDC
- *   - gambleWithYield() → Convert yield into more tickets
- *   - Let it compound → Earn more yield over time
- *
- *   Heir System:
- *   - After years of inactivity, heir can claim YIELD ONLY
- *   - Principal stays in pot forever (lottery model)
- *
- * ═══════════════════════════════════════════════════════════════════════════════════════════════
- *
- * PART 8: SUMMARY
- * ─────────────────────────────────────────────────────────────────────────────────────────────────
- *
- *   TODAY (V1.5 - Fixed Lottery Model + VRF V2.5):
- *   - ALL users buy tickets to participate (no deposit-only option)
- *   - 10% of every ticket → Eternal Seed (never paid out)
- *   - 55% of every ticket → Prize Pool (to winners)
- *   - 35% of every ticket → Treasury (ops + giveaways)
- *   - Ticket money (principal) → STAYS IN SYSTEM FOREVER
- *   - Aave yield → Claimable by users OR gamble for more tickets
- *   - Pot grows via: seed + seed yield + tickets + rollovers + forfeit yield
- *   - Chainlink VRF V2.5 for provably fair randomness
- *   - Deployed on Base (L2) for low gas costs
- *
- *   FUTURE (V2 - Rolling Seed + Saver/Gambler Toggle + Cashback):
- *   - Everything above PLUS:
- *   - Truflation/Chainlink Automation monitors pot health
- *   - Injects from idle treasury when needed
- *   - Saver/Gambler toggle (appears Week 2 when user has yield to choose about)
- *   - Savers: 100% yield as EOY cash + 100% cashback
- *   - Gamblers: 100% yield as tickets + reduced cashback
- *
- *   THE VISION:
- *   A lottery where the prize pot can ONLY grow.
- *   Today's 10% seed becomes tomorrow's fortune.
- *   Compounding forever.
- *
- * ═══════════════════════════════════════════════════════════════════════════════════════════════
- *
- * VRF V2.5 MIGRATION NOTES
- * ═══════════════════════════════════════════════════════════════════════════════════════════════
- *
- * Migrated from Chainlink VRF V2 → V2.5 for Base Sepolia / Base Mainnet deployment.
- * VRF V2 is deprecated (Nov 2024). V2.5 is required for Base chain.
- *
- * CHANGES FROM V1.4.1:
- * ─────────────────────────────────────────────────────────────────────────────────────────────
- *
- * [V2.5-01] IMPORTS: VRFConsumerBaseV2 → VRFConsumerBaseV2Plus + VRFV2PlusClient
- * [V2.5-02] INHERITANCE: Removed OZ Ownable (VRFConsumerBaseV2Plus includes ConfirmedOwner)
- *           - ConfirmedOwner provides onlyOwner modifier (same as before)
- *           - Uses 2-step transfer (transferOwnership → acceptOwnership) - MORE secure
- *           - To lock contract forever: transfer to address(0) is NOT possible
- *             with ConfirmedOwner - add renounceOwnership() if needed later
- * [V2.5-03] COORDINATOR: Removed immutable COORDINATOR variable
- *           - V2.5 base contract provides s_vrfCoordinator (public, upgradeable)
- * [V2.5-04] SUBSCRIPTION ID: uint64 → uint256 (V2.5 uses larger IDs)
- * [V2.5-05] REQUEST FORMAT: requestRandomWords now uses struct-based call
- *           - Includes nativePayment option (can pay with ETH instead of LINK)
- * [V2.5-06] CALLBACK: fulfillRandomWords parameter changed from memory → calldata
- * [V2.5-07] DEPLOY TARGET: Base Sepolia (chainId: 84532) / Base Mainnet (chainId: 8453)
- * [V2.5-08] COMPILATION: Removed `constant` from array declarations (Solidity limitation),
- *           changed _generateMemeCombo from `pure` to `view`
- *
- * ALL GAME LOGIC, YIELD MECHANICS, AND ACCOUNTING ARE UNCHANGED.
+ *   - gambleWithYield(): Anytime, when yield >= $3 (one ticket)
+ *   - claimYieldAsCash(): Anniversary only (7-day window around yearly date)
+ *   - Broken streak: 50% yield to treasury, 50% to prize pot
+ *   - Unbroken streak: Yield rolls over indefinitely
  *
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
  * BASE SEPOLIA DEPLOYMENT ADDRESSES
@@ -251,80 +97,17 @@ pragma solidity ^0.8.24;
  *   USDC (testnet):         0xba50cd2a20f6da35d788639e581bca8d0b5d4d5f
  *   aUSDC (testnet):        0x10F1A9D11CDf50041f3f8cB7191CBe2f31750ACC
  *
- *   Deployed Contract:      0x8a7d6c3c0361de6ffc90d5b5e8c42d15d6b0b903
- *   VRF Subscription:       95130852569994825931593448644391808821055224185718417806789928080677314613110
- *
- *   VRF Dashboard:          https://vrf.chain.link/base-sepolia
- *   Testnet LINK:           https://faucets.chain.link/base-sepolia
- *   Testnet ETH:            https://faucets.chain.link/base-sepolia
- *
- * ═══════════════════════════════════════════════════════════════════════════════════════════════
- *
- * CHANGELOG
- * ═══════════════════════════════════════════════════════════════════════════════════════════════
- *
- * V1.5 VRF V2.5 MIGRATION + COMPILATION FIXES (from v1.4.1):
- * - [V2.5-01] Replaced VRFConsumerBaseV2 with VRFConsumerBaseV2Plus
- * - [V2.5-02] Replaced OZ Ownable with ConfirmedOwner (from V2Plus base)
- * - [V2.5-03] Removed COORDINATOR immutable, uses s_vrfCoordinator from base
- * - [V2.5-04] subscriptionId: uint64 → uint256
- * - [V2.5-05] _requestRandomness() uses VRFV2PlusClient.RandomWordsRequest struct
- * - [V2.5-06] fulfillRandomWords: memory → calldata
- * - [V2.5-07] Added nativePayment toggle (default: false = pay with LINK)
- * - [V2.5-08] updateVRFParameters: uint64 → uint256 for subId
- * - [COMPILE-01] Removed `constant` from MEME_ALPHABET array (Solidity array limitation)
- * - [COMPILE-02] Removed `constant` from TIERS_PERCENT array (Solidity array limitation)
- * - [COMPILE-03] Changed _generateMemeCombo from `pure` to `view` (reads state array)
- *
- * V1.4.1 LOTTERY MODEL FIX:
- * - [FIX-SOLVENCY-01] Removed withdrawSavings() - was causing insolvency by withdrawing already-allocated principal
- * - [FIX-SOLVENCY-02] Fixed claimInheritance() - now withdraws YIELD ONLY, principal stays in pot
- * - [FIX-SOLVENCY-03] Fixed expireUnclaimedInheritance() - no more double-counting, yield only goes to pot
- * - [NEW-YIELD] Added claimYieldAsCash() - users can claim yield as USDC without touching principal
- * - [REMOVE] Removed WithdrawalLocked error, WITHDRAWAL_LOCK_PERIOD, SavingsWithdrawn event
- * - [REMOVE] Removed getWithdrawalUnlockDate(), getDaysUntilWithdrawalUnlock(), canWithdraw() views
- * - [DOCS-04] Updated documentation to clarify lottery model (principal = spent on tickets)
- *
- * V1.4 BUG FIXES:
- * - [FIX-UNCLAIMED] Added totalUnclaimedPrizes tracking to prevent unclaimed prizes from being treated as yield
- * - [FIX-ACCOUNTING] Removed totalUserBalance from totalAllocated (it's not an allocation bucket)
- * - [FIX-YIELD] Materialized treasury yields in _materializeYields() to prevent leakage to users
- * - [FIX-REENTRANT] Added nonReentrant to setHeir() for consistency
- *
- * V1.3 CLEANUP:
- * - [REMOVE-01] Removed depositSavings() - all users must buy tickets to participate
- * - [REMOVE-02] Removed savingsCountsAsActivity variable and setter
- * - [REMOVE-03] Removed SavingsDeposited and SavingsBehaviorChanged events
- *
- * V1.2 YIELD MATERIALIZATION:
- * - [YIELD-01] Added _materializeSeedYield() function
- * - [YIELD-02] Seed yield credited to prizePot at each draw
- * - [YIELD-03] Added SeedYieldMaterialized event
- *
- * V1.1 AUDIT FIXES:
- * - [FIX-019] Users only win at BEST tier, not all matching tiers
- * - [FIX-020] 1-year withdrawal lock-up + timestamp reset (removed in v1.4.1)
- * - [H-01 FIX] VRF parameters cannot change during pending request
- * - [M-01 FIX] Documented yield calculation difference (NET vs GROSS)
- * - [M-03 FIX] gambleWithYield() now increments ticketsBought
- * - [L-04 FIX] Added YieldForfeited and VRFRequestReset events
- * - [NEW-01 FIX] forceCleanup() uses simple delete to avoid gas limit
- * - [NEW-02 DOC] Shared yield pool behavior documented
- *
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
-// [V2.5-01] New imports for VRF V2.5
+// VRF V2.5 imports
 import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
 import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-// [V2.5-02] Removed: import "@openzeppelin/contracts/access/Ownable.sol";
-//           ConfirmedOwner is inherited via VRFConsumerBaseV2Plus
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@aave/core-v3/contracts/interfaces/IPool.sol";
 
-// [V2.5-02] Removed Ownable from inheritance - ConfirmedOwner from V2Plus base provides onlyOwner
 contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -359,6 +142,7 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     error CanOnlyDecrease();
     error ExceedsLimit();
     error NoTicketsBought();
+    error NotAnniversary();  // [V1.6.6] New error
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     // DRAW PHASES
@@ -379,18 +163,14 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     address public immutable USDC;
     address public immutable aUSDC;
     address public immutable AAVE_POOL;
-    // [V2.5-03] Removed: VRFCoordinatorV2Interface public immutable COORDINATOR;
-    //           V2.5 base contract provides s_vrfCoordinator (public getter)
     uint256 public immutable DEPLOY_TIMESTAMP;
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     // UPDATEABLE VRF PARAMETERS
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     
-    // [V2.5-04] uint64 → uint256 (V2.5 uses larger subscription IDs)
     uint256 public subscriptionId;
     bytes32 public keyHash;
-    // [V2.5-07] Option to pay VRF fees with native ETH instead of LINK
     bool public useNativePayment;
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -406,10 +186,9 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     uint256 public mulliganEligibilityMonths;
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
-    // 42-CHARACTER MEME ALPHABET
+    // 42-CHARACTER MEME ALPHABET: A-Z + 0-9 + !@#$%&
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     
-    // [COMPILE-01] Removed `constant` - Solidity doesn't support constant for non-value-type arrays
     bytes1[42] public MEME_ALPHABET = [
         bytes1(0x41),0x42,0x43,0x44,0x45,0x46,0x47,0x48,0x49,0x4A,
         0x4B,0x4C,0x4D,0x4E,0x4F,0x50,0x51,0x52,0x53,0x54,
@@ -423,7 +202,6 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     
     uint256 public constant TICKET_PRICE = 3e6;
-    // [COMPILE-02] Removed `constant` - Solidity doesn't support constant for non-value-type arrays
     uint256[5] public TIERS_PERCENT = [4000, 2500, 2000, 1000, 500];
     uint256 public constant MAX_TOTAL_ENTRIES_PER_WEEK = 5000;
     uint256 public constant MAX_GUESSES_PER_USER = 5;
@@ -437,9 +215,9 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     uint256 public constant DRAW_STUCK_TIMEOUT = 48 hours;
     uint256 public constant GUESS_LENGTH = 6;
     uint256 public constant ALPHABET_SIZE = 42;
-    
-    /// @notice Seed is 10/65 of prize pot (~15.38%)
-    uint256 public constant SEED_BPS_OF_POT = 1538;
+    uint256 public constant ANNIVERSARY_WINDOW = 7 days;  // [V1.6.6] Claim window around anniversary
+    uint256 public constant YIELD_PRECISION = 1e18;       // [V1.6.6] Precision for yield index
+    // [V1.6.6-05] Removed SEED_BPS_OF_POT - seed is now implicitly (10000 - payoutBps)
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     // STATE VARIABLES
@@ -456,8 +234,9 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     uint256 public lastRequestTimestamp;
     uint256 public totalEntriesThisWeek;
     
-    /// @notice Tracks total seed yield materialized (for analytics)
-    uint256 public totalSeedYieldMaterialized;
+    // [V1.6.6-02] Epoch-based yield tracking (replaces totalSeedYieldMaterialized)
+    uint256 public globalYieldIndex;      // Cumulative yield per token (scaled by YIELD_PRECISION)
+    uint256 public lastSnapshotAUSDC;     // aUSDC balance at last snapshot
     
     DrawPhase public drawPhase;
     uint256 public distributionTierIndex;
@@ -471,9 +250,11 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     
     uint256 public populationIndex;
 
-    // User mappings
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    // USER MAPPINGS
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+
     mapping(address => uint256) public userBalance;
-    mapping(address => uint256) public yieldSpent;
     mapping(address => uint256) public ticketsBought;
     mapping(address => uint256) public streakWeeks;
     mapping(address => uint256) public firstTicketTimestamp;
@@ -484,9 +265,15 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     mapping(address => uint256) public lastMulliganResetYear;
     mapping(address => string[]) public thisWeekGuesses;
     mapping(address => uint256) public unclaimedPrizes;
-    
-    /// @notice Best match count for each user this week
     mapping(address => uint256) public bestMatchThisWeek;
+    
+    // [V1.6.6-02] Time-weighted yield tracking per user
+    mapping(address => uint256) public userYieldIndex;    // User's globalYieldIndex at last settlement
+    mapping(address => uint256) public accumulatedYield;  // Settled yield waiting to be claimed/used
+    mapping(address => uint256) public yieldSpent;        // Total yield spent (gambled or claimed)
+    
+    // [V1.6.6-04] Lifetime prize tracking
+    mapping(address => uint256) public totalPrizesWon;
 
     address[] public playersThisWeek;
 
@@ -510,7 +297,9 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     event WinningComboDrawn(uint256 indexed week, string combo);
     event WinnerSelected(address indexed winner, uint256 amount, uint256 matchLevel);
     event PrizeClaimed(address indexed winner, uint256 amount);
-    event YieldClaimed(address indexed user, uint256 amount);  // [v1.4.1] New event
+    event YieldClaimed(address indexed user, uint256 amount);
+    event YieldSettled(address indexed user, uint256 earned, uint256 newTotal);  // [V1.6.6]
+    event GlobalYieldIndexUpdated(uint256 indexed week, uint256 userYield, uint256 potYield, uint256 newIndex);  // [V1.6.6]
     event MatchingComplete(uint256 indexed week, uint256 totalWinners);
     event MatchingBatchProcessed(uint256 indexed week, uint256 processedPlayers, uint256 totalPlayers);
     event TierPopulationComplete(uint256 indexed week);
@@ -524,19 +313,17 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     event MulliganUsed(address indexed user, uint256 indexed round);
     event HeirSet(address indexed user, address indexed heir);
     event HeirClaimed(address indexed heir, address indexed original, uint256 amount);
-    event InheritanceExpired(address indexed original, uint256 yieldAmount);  // [v1.4.1] Updated to show yield only
+    event InheritanceExpired(address indexed original, uint256 yieldAmount);
     event PayoutPercentIncreased(uint256 oldBps, uint256 newBps);
     event TreasuryTakeDecreased(uint256 oldBps, uint256 newBps);
     event TreasuryWithdrawal(uint256 amount, address recipient);
     event TreasuryGiftWithdrawal(uint256 amount, address recipient);
     event EmergencyReset(uint256 indexed week, DrawPhase fromPhase, string reason);
-    // [V2.5-08] Updated event signature for uint256 subId
     event VRFParametersUpdated(uint256 newSubId, bytes32 newKeyHash);
     event YieldForfeited(address indexed user, uint256 amount, uint256 toTreasury, uint256 toPot);
     event VRFRequestReset(uint256 indexed requestId);
-    event SeedYieldMaterialized(uint256 indexed week, uint256 amount, uint256 newPrizePot);
-    // [V2.5-07] New event for payment method toggle
     event NativePaymentUpdated(bool useNative);
+    // [V1.6.6-06] Removed SeedYieldMaterialized event - replaced by pot compounding in GlobalYieldIndexUpdated
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     // CONSTRUCTOR
@@ -544,7 +331,7 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     
     constructor(
         address _vrfCoordinator,
-        uint256 _subId,              // [V2.5-04] was uint64
+        uint256 _subId,
         bytes32 _keyHash,
         address _usdc,
         address _aavePool,
@@ -555,7 +342,7 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         uint256 _heirEligibilityYears,
         uint256 _heirClaimYears,
         uint256 _mulliganMonths
-    ) VRFConsumerBaseV2Plus(_vrfCoordinator) {   // [V2.5-01] was VRFConsumerBaseV2
+    ) VRFConsumerBaseV2Plus(_vrfCoordinator) {
         if (_vrfCoordinator == address(0)) revert InvalidAddress();
         if (_usdc == address(0)) revert InvalidAddress();
         if (_aavePool == address(0)) revert InvalidAddress();
@@ -574,8 +361,6 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         if (_subId == 0) revert ExceedsLimit();
         if (_keyHash == bytes32(0)) revert InvalidAddress();
         
-        // [V2.5-03] Removed: COORDINATOR = VRFCoordinatorV2Interface(_vrfCoordinator);
-        //           s_vrfCoordinator is set by VRFConsumerBaseV2Plus constructor
         subscriptionId = _subId;
         keyHash = _keyHash;
         USDC = _usdc;
@@ -595,15 +380,153 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         lastDrawTimestamp = block.timestamp;
         drawPhase = DrawPhase.IDLE;
         currentWeek = 1;
-        useNativePayment = false;  // [V2.5-07] Default: pay with LINK
+        useNativePayment = false;
+        
+        // [V1.6.6] Initialize yield tracking
+        globalYieldIndex = 0;
+        lastSnapshotAUSDC = 0;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    // [V1.6.6] EPOCH-BASED YIELD SYSTEM WITH PROPORTIONAL ATTRIBUTION
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * @notice [V1.6.6-01] Update global yield index with proportional attribution
+     * @dev Each bucket (pot, treasury ops, treasury gift, users) earns yield proportional to its size
+     *      This ensures the Eternal Seed compounds and users only get their fair share
+     */
+    function _updateGlobalYieldIndex() internal {
+        uint256 currentAUSDC = IERC20(aUSDC).balanceOf(address(this));
+        
+        // First draw - just snapshot, no yield yet
+        if (lastSnapshotAUSDC == 0) {
+            lastSnapshotAUSDC = currentAUSDC;
+            return;
+        }
+        
+        // No yield or negative (treat as 0)
+        if (currentAUSDC <= lastSnapshotAUSDC) {
+            lastSnapshotAUSDC = currentAUSDC;
+            return;
+        }
+        
+        uint256 totalYield = currentAUSDC - lastSnapshotAUSDC;
+        uint256 totalAllocated = prizePot + treasuryOperatingReserve + treasuryGiftReserve + totalUnclaimedPrizes + totalUserBalance;
+        
+        if (totalAllocated == 0) {
+            lastSnapshotAUSDC = currentAUSDC;
+            return;
+        }
+        
+        // Each bucket earns yield proportional to its size
+        uint256 potYield = totalYield * prizePot / totalAllocated;
+        uint256 opsYield = totalYield * treasuryOperatingReserve / totalAllocated;
+        uint256 giftYield = totalYield * treasuryGiftReserve / totalAllocated;
+        uint256 userYield = totalYield * totalUserBalance / totalAllocated;
+        
+        // Pot compounds (THE ETERNAL SEED)
+        prizePot += potYield;
+        
+        // Treasury compounds
+        treasuryOperatingReserve += opsYield;
+        treasuryGiftReserve += giftYield;
+        
+        // Users get their proportional share via index
+        if (totalUserBalance > 0 && userYield > 0) {
+            uint256 indexIncrease = userYield * YIELD_PRECISION / totalUserBalance;
+            globalYieldIndex += indexIncrease;
+            
+            emit GlobalYieldIndexUpdated(currentWeek, userYield, potYield, globalYieldIndex);
+        }
+        
+        // Snapshot for next epoch
+        lastSnapshotAUSDC = currentAUSDC;
+    }
+
+    /**
+     * @notice Settle a user's yield up to current global index
+     * @dev Must be called BEFORE any balance change (deposit, withdrawal, forfeit)
+     *      Moves earned yield from "virtual" to "accumulated" state
+     */
+    function _settleYield(address user) internal {
+        if (userBalance[user] == 0) {
+            // No balance = just sync their index
+            userYieldIndex[user] = globalYieldIndex;
+            return;
+        }
+        
+        // Calculate yield earned since last settlement
+        uint256 indexDelta = globalYieldIndex - userYieldIndex[user];
+        if (indexDelta > 0) {
+            uint256 earned = userBalance[user] * indexDelta / YIELD_PRECISION;
+            accumulatedYield[user] += earned;
+            
+            emit YieldSettled(user, earned, accumulatedYield[user]);
+        }
+        
+        // Sync to current index
+        userYieldIndex[user] = globalYieldIndex;
+    }
+
+    /**
+     * @notice Get user's total available yield (accumulated + pending)
+     * @dev View function - doesn't modify state
+     */
+    function getUserYield(address user) public view returns (uint256) {
+        uint256 accumulated = accumulatedYield[user];
+        
+        // Add pending yield (not yet settled)
+        if (userBalance[user] > 0 && globalYieldIndex > userYieldIndex[user]) {
+            uint256 indexDelta = globalYieldIndex - userYieldIndex[user];
+            uint256 pending = userBalance[user] * indexDelta / YIELD_PRECISION;
+            accumulated += pending;
+        }
+        
+        // Subtract what's already been spent
+        uint256 spent = yieldSpent[user];
+        return accumulated > spent ? accumulated - spent : 0;
+    }
+
+    /**
+     * @notice Check if user is within their anniversary claim window
+     * @dev Anniversary = firstTicketTimestamp + N years, with 7-day window
+     */
+    function isAnniversary(address user) public view returns (bool) {
+        if (firstTicketTimestamp[user] == 0) return false;
+        
+        uint256 timeSinceFirst = block.timestamp - firstTicketTimestamp[user];
+        uint256 yearsSinceFirst = timeSinceFirst / 365 days;
+        
+        if (yearsSinceFirst == 0) return false;  // Must be at least 1 year
+        
+        // Calculate this year's anniversary
+        uint256 anniversaryDate = firstTicketTimestamp[user] + (yearsSinceFirst * 365 days);
+        
+        // Check if within window (7 days before to 7 days after)
+        uint256 windowStart = anniversaryDate > ANNIVERSARY_WINDOW ? anniversaryDate - ANNIVERSARY_WINDOW : 0;
+        uint256 windowEnd = anniversaryDate + ANNIVERSARY_WINDOW;
+        
+        return block.timestamp >= windowStart && block.timestamp <= windowEnd;
+    }
+
+    /**
+     * @notice Get user's next anniversary date
+     */
+    function getNextAnniversary(address user) public view returns (uint256) {
+        if (firstTicketTimestamp[user] == 0) return 0;
+        
+        uint256 timeSinceFirst = block.timestamp - firstTicketTimestamp[user];
+        uint256 yearsSinceFirst = timeSinceFirst / 365 days;
+        
+        // Next anniversary is yearsSinceFirst + 1 years from first ticket
+        return firstTicketTimestamp[user] + ((yearsSinceFirst + 1) * 365 days);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     // CORE GAMEPLAY
     // ═══════════════════════════════════════════════════════════════════════════════════════════
 
-    /// @notice Buy a ticket with USDC - ALL users must buy tickets to participate
-    /// @param userGuess 6 unique characters from the 42-character meme alphabet
     function buyTicket(string calldata userGuess) external nonReentrant {
         if (drawPhase != DrawPhase.IDLE) revert DrawInProgress();
         _validateGuess(userGuess);
@@ -617,10 +540,9 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         emit TicketBought(msg.sender, userGuess, currentWeek);
     }
 
-    /// @notice Gamble using accrued yield instead of fresh USDC
-    /// @dev Shared yield pool design note:
-    ///      When User A gambles with yield, prizePot increases, which reduces
-    ///      the unallocated yield pool. This affects all users proportionally.
+    /**
+     * @notice Gamble using accrued yield - only when yield >= TICKET_PRICE
+     */
     function gambleWithYield(string calldata userGuess) external nonReentrant {
         if (drawPhase != DrawPhase.IDLE) revert DrawInProgress();
         _validateGuess(userGuess);
@@ -628,14 +550,15 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         if (thisWeekGuesses[msg.sender].length >= MAX_GUESSES_PER_USER) revert MaxGuessesReached();
         if (totalEntriesThisWeek >= MAX_TOTAL_ENTRIES_PER_WEEK) revert WeekFull();
         
+        // [V1.6.6] Settle yield first, then check
+        _settleYield(msg.sender);
+        
         uint256 availableYield = getUserYield(msg.sender);
         if (availableYield < TICKET_PRICE) revert InsufficientYield();
         
-        uint256 actualYield = _getActualAvailableYield(msg.sender);
-        if (actualYield < TICKET_PRICE) revert InsufficientYield();
-        
         _updateActivityTracking(msg.sender);
         
+        // Spend yield
         yieldSpent[msg.sender] += TICKET_PRICE;
         prizePot += TICKET_PRICE;
         ticketsBought[msg.sender]++;
@@ -655,6 +578,9 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     }
 
     function _processTicketPurchase(address user) internal {
+        // [V1.6.6] Settle yield BEFORE balance change
+        _settleYield(user);
+        
         IERC20(USDC).safeTransferFrom(user, address(this), TICKET_PRICE);
         IERC20(USDC).forceApprove(AAVE_POOL, TICKET_PRICE);
         IPool(AAVE_POOL).supply(USDC, TICKET_PRICE, address(this), 0);
@@ -687,6 +613,8 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     function _updateActivityTracking(address user) internal {
         if (firstTicketTimestamp[user] == 0) {
             firstTicketTimestamp[user] = block.timestamp;
+            // [V1.6.6] Initialize user's yield index on first deposit
+            userYieldIndex[user] = globalYieldIndex;
         }
         
         lastBuyTimestamp[user] = block.timestamp;
@@ -737,91 +665,39 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         }
     }
 
+    /**
+     * @notice [V1.6.6] Forfeit yield on broken streak - 50% treasury, 50% pot
+     * @dev This is the ONLY way treasury/pot get user yield
+     */
     function _forfeitYield(address user) internal returns (uint256) {
+        // Settle first to get accurate yield
+        _settleYield(user);
+        
         uint256 yield = getUserYield(user);
         if (yield == 0) return 0;
 
-        uint256 actualYield = _getActualAvailableYield(user);
-        if (actualYield == 0) return 0;
-        
-        uint256 toForfeit = yield > actualYield ? actualYield : yield;
-        if (toForfeit == 0) return 0;
+        // Mark as spent
+        yieldSpent[user] += yield;
 
-        yieldSpent[user] += toForfeit;
-
-        uint256 toTreasury = toForfeit / 2;
-        uint256 toPrizePot = toForfeit - toTreasury;
+        // 50/50 split to treasury and prize pot
+        uint256 toTreasury = yield / 2;
+        uint256 toPrizePot = yield - toTreasury;
         
         treasuryOperatingReserve += toTreasury;
         prizePot += toPrizePot;
         
-        emit YieldForfeited(user, toForfeit, toTreasury, toPrizePot);
+        emit YieldForfeited(user, yield, toTreasury, toPrizePot);
 
-        return toForfeit;
-    }
-
-    /// @notice Returns GROSS proportional yield (before yieldSpent deduction)
-    /// @dev Used for internal accounting - checks actual Aave balance vs allocations
-    function _getActualAvailableYield(address user) internal view returns (uint256) {
-        uint256 totalContractValue = IERC20(aUSDC).balanceOf(address(this));
-        uint256 totalAllocated = prizePot + treasuryOperatingReserve + treasuryGiftReserve + totalUnclaimedPrizes;
-        
-        if (totalContractValue <= totalAllocated) return 0;
-        
-        uint256 actualTotalYield = totalContractValue - totalAllocated;
-        if (totalUserBalance == 0) return 0;
-        
-        return userBalance[user] * actualTotalYield / totalUserBalance;
+        return yield;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
-    // YIELD MATERIALIZATION
-    // ═══════════════════════════════════════════════════════════════════════════════════════════
-
-    /**
-     * @notice Materialize yields into appropriate buckets
-     * @dev Called at start of each draw before payout calculations
-     * @return seedYield The amount of yield credited to prizePot
-     */
-    function _materializeYields() internal returns (uint256 seedYield) {
-        uint256 totalContractValue = IERC20(aUSDC).balanceOf(address(this));
-        uint256 totalAllocated = prizePot + treasuryOperatingReserve + treasuryGiftReserve + totalUnclaimedPrizes;
-        
-        // No yield to materialize
-        if (totalContractValue <= totalAllocated) return 0;
-        
-        uint256 totalYield = totalContractValue - totalAllocated;
-        
-        // Avoid division by zero
-        if (totalAllocated == 0) return 0;
-        
-        // Calculate all yields first (to avoid sequential update bias)
-        uint256 opsYield = totalYield * treasuryOperatingReserve / totalAllocated;
-        uint256 giftYield = totalYield * treasuryGiftReserve / totalAllocated;
-        uint256 seedValue = prizePot * SEED_BPS_OF_POT / 10000;
-        seedYield = totalYield * seedValue / totalAllocated;
-        
-        // Apply credits
-        treasuryOperatingReserve += opsYield;
-        treasuryGiftReserve += giftYield;
-        
-        // Track seed yield (stays in Aave, never becomes prize money)
-        if (seedYield > 0) {
-            totalSeedYieldMaterialized += seedYield;
-            emit SeedYieldMaterialized(currentWeek, seedYield, prizePot);
-        }
-        
-        return seedYield;
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════════════════════
-    // PHASE 1: VRF  [V2.5-05] Updated request format
+    // PHASE 1: VRF
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     
     function _requestRandomness() internal {
         if (pendingRequestId != 0) revert VRFPending();
         
-        // [V2.5-05] V2.5 uses struct-based request via s_vrfCoordinator
         pendingRequestId = s_vrfCoordinator.requestRandomWords(
             VRFV2PlusClient.RandomWordsRequest({
                 keyHash: keyHash,
@@ -837,7 +713,6 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         lastRequestTimestamp = block.timestamp;
     }
 
-    // [V2.5-06] Changed: memory → calldata for randomWords parameter
     function fulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) internal override {
         if (requestId != pendingRequestId) revert WrongPhase();
         pendingRequestId = 0;
@@ -857,20 +732,16 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     // PHASE 2a: CALCULATE BEST MATCHES
     // ═══════════════════════════════════════════════════════════════════════════════════════════
 
-    /**
-     * @notice Phase 2a: Find best match for each user across all their guesses
-     * @dev Call repeatedly until all players processed, then moves to POPULATING_TIERS
-     */
     function calculateMatches() external nonReentrant {
         if (drawPhase != DrawPhase.PENDING_DISTRIBUTION) revert WrongPhase();
         
         string memory winningCombo = weeklyResults[currentWeek].combo;
         
-        // First call - materialize yields and initialize payout pool
         if (!matchingInProgress) {
-            // MATERIALIZE YIELDS FIRST!
-            _materializeYields();
+            // [V1.6.6] Update global yield index at start of each draw
+            _updateGlobalYieldIndex();
             
+            // Solvency check
             uint256 totalValue = IERC20(aUSDC).balanceOf(address(this));
             uint256 totalAllocated = prizePot + treasuryOperatingReserve + treasuryGiftReserve + totalUnclaimedPrizes;
             if (totalValue < totalAllocated) revert SolvencyCheckFailed();
@@ -888,14 +759,12 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         
         uint256 processedThisTx = 0;
         
-        // Process players and find their best match
         while (matchingPlayerIndex < playersThisWeek.length && processedThisTx < MAX_MATCHES_PER_TX) {
             address user = playersThisWeek[matchingPlayerIndex];
             string[] storage guesses = thisWeekGuesses[user];
             
             uint256 userBestMatch = 0;
             
-            // Check ALL guesses for this user, keep only the best
             for (uint256 g = 0; g < guesses.length; g++) {
                 uint256 matches = _countMatches(winningCombo, guesses[g]);
                 if (matches > userBestMatch) {
@@ -903,7 +772,6 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
                 }
             }
             
-            // Store best match (will be used in population phase)
             if (userBestMatch >= 2) {
                 bestMatchThisWeek[user] = userBestMatch;
                 totalWinnersThisDraw++;
@@ -914,7 +782,6 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         }
         
         if (matchingPlayerIndex >= playersThisWeek.length) {
-            // Move to tier population phase
             matchingInProgress = false;
             matchingPlayerIndex = 0;
             populationIndex = 0;
@@ -930,10 +797,6 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     // PHASE 2b: POPULATE TIER ARRAYS
     // ═══════════════════════════════════════════════════════════════════════════════════════════
 
-    /**
-     * @notice Phase 2b: Build tier arrays from best matches
-     * @dev Each user added to exactly ONE tier (their best match)
-     */
     function populateTiers() external nonReentrant {
         if (drawPhase != DrawPhase.POPULATING_TIERS) revert WrongPhase();
         
@@ -943,7 +806,6 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
             address user = playersThisWeek[populationIndex];
             uint256 bestMatch = bestMatchThisWeek[user];
             
-            // Add to appropriate tier (only if they had a qualifying match)
             if (bestMatch == 6) {
                 weeklyResults[currentWeek].jackpotWinners.push(user);
             } else if (bestMatch == 5) {
@@ -955,7 +817,6 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
             } else if (bestMatch == 2) {
                 weeklyResults[currentWeek].match2.push(user);
             }
-            // bestMatch < 2 = no win, not added to any tier
             
             populationIndex++;
             processedThisTx++;
@@ -1060,7 +921,11 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         emit WeekFinalized(currentWeek - 1);
     }
 
-    /// @notice Claim lottery prize winnings
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    // PRIZE CLAIMS
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+
+    /// @notice [V1.6.6-04] Claim lottery prize winnings (anytime) - now tracks lifetime prizes
     function claimPrize() external nonReentrant {
         uint256 amount = unclaimedPrizes[msg.sender];
         if (amount == 0) revert NothingToClaim();
@@ -1070,6 +935,7 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         
         try IPool(AAVE_POOL).withdraw(USDC, amount, address(this)) {
             IERC20(USDC).safeTransfer(msg.sender, amount);
+            totalPrizesWon[msg.sender] += amount;  // [V1.6.6-04] Track lifetime prizes
             emit PrizeClaimed(msg.sender, amount);
         } catch {
             unclaimedPrizes[msg.sender] = amount;
@@ -1107,30 +973,26 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     // ═══════════════════════════════════════════════════════════════════════════════════════════
 
     /**
-     * @notice [v1.4.1] Claim accumulated Aave yield as USDC
-     * @dev Principal (ticket money) stays in the system forever - this is a lottery!
-     *      Only the yield from Aave interest is claimable.
-     *      User keeps their userBalance, so they continue earning future yield.
+     * @notice [V1.6.6-03] Claim yield as USDC - ONLY on anniversary
+     * @dev Users have a 7-day window around their annual anniversary to claim
      */
     function claimYieldAsCash() external nonReentrant {
+        // [V1.6.6] Must be anniversary
+        if (!isAnniversary(msg.sender)) revert NotAnniversary();
+        
+        // Settle yield first
+        _settleYield(msg.sender);
+        
         uint256 yield = getUserYield(msg.sender);
         if (yield == 0) revert NothingToClaim();
         
-        uint256 actualYield = _getActualAvailableYield(msg.sender);
-        if (actualYield < yield) {
-            yield = actualYield;  // Cap to actual available
-        }
-        
-        if (yield == 0) revert NothingToClaim();
-        
-        // State change BEFORE external call (Checks-Effects-Interactions)
+        // Mark as spent
         yieldSpent[msg.sender] += yield;
         
         try IPool(AAVE_POOL).withdraw(USDC, yield, address(this)) {
             IERC20(USDC).safeTransfer(msg.sender, yield);
             emit YieldClaimed(msg.sender, yield);
         } catch {
-            // Rollback on failure
             yieldSpent[msg.sender] -= yield;
             revert AaveLiquidityLow();
         }
@@ -1140,7 +1002,6 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     // LEGACY MODE (Heir System)
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     
-    /// @notice Set heir for legacy transfer
     function setHeir(address _heir) external nonReentrant {
         if (_heir == address(0)) revert InvalidHeir();
         if (_heir == msg.sender) revert InvalidHeir();
@@ -1150,33 +1011,22 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         emit HeirSet(msg.sender, _heir);
     }
 
-    /**
-     * @notice [v1.4.1 FIX] Heir claims YIELD ONLY - principal stays in pot forever
-     * @dev This fixes the insolvency bug where principal was being double-withdrawn.
-     *      Principal was already allocated to prizePot/treasury on ticket purchase.
-     *      Heir only gets the accumulated Aave yield.
-     */
     function claimInheritance(address original) external nonReentrant {
         if (heir[original] != msg.sender) revert NotHeir();
         if (block.timestamp <= lastBuyTimestamp[original] + heirClaimYears * 365 days) revert TooEarly();
 
+        // [V1.6.6] Settle yield first
+        _settleYield(original);
+        
         uint256 yield = getUserYield(original);
         if (yield == 0) revert NothingToClaim();
-        
-        uint256 actualYield = _getActualAvailableYield(original);
-        if (actualYield < yield) {
-            yield = actualYield;
-        }
-        
-        if (yield == 0) revert NothingToClaim();
 
-        // Store for rollback
         uint256 prevYieldSpent = yieldSpent[original];
         uint256 prevUserBalance = userBalance[original];
+        uint256 prevAccumulated = accumulatedYield[original];
         
-        // Update state - remove original from yield pool entirely
         yieldSpent[original] += yield;
-        userBalance[original] = 0;  // Remove from yield pool (they're inactive/gone)
+        userBalance[original] = 0;
         totalUserBalance -= prevUserBalance;
         heir[original] = address(0);
 
@@ -1184,35 +1034,30 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
             IERC20(USDC).safeTransfer(msg.sender, yield);
             emit HeirClaimed(msg.sender, original, yield);
         } catch {
-            // Rollback all state
             yieldSpent[original] = prevYieldSpent;
             userBalance[original] = prevUserBalance;
+            accumulatedYield[original] = prevAccumulated;
             totalUserBalance += prevUserBalance;
             heir[original] = msg.sender;
             revert AaveLiquidityLow();
         }
     }
 
-    /**
-     * @notice [v1.4.1 FIX] Expire unclaimed inheritance - yield goes to pot, no double-counting
-     * @dev This fixes the double-counting bug where principal was being added again.
-     *      Principal is ALREADY in prizePot/treasury from the original ticket purchase.
-     *      We only add the unclaimed YIELD to the pot.
-     */
     function expireUnclaimedInheritance(address original) external nonReentrant {
         if (heir[original] == address(0)) revert NotHeir();
         if (block.timestamp <= lastBuyTimestamp[original] + (heirClaimYears + heirExpiryYears) * 365 days) revert TooEarly();
 
+        // [V1.6.6] Settle yield first
+        _settleYield(original);
+        
         uint256 yield = getUserYield(original);
         uint256 prevUserBalance = userBalance[original];
         
-        // Clear user state - remove from yield pool
-        yieldSpent[original] += yield;  // Mark yield as "spent" to pot
+        yieldSpent[original] += yield;
         userBalance[original] = 0;
         totalUserBalance -= prevUserBalance;
         heir[original] = address(0);
 
-        // Only add YIELD to pot (principal already there from ticket purchase!)
         if (yield > 0) {
             prizePot += yield;
         }
@@ -1247,14 +1092,17 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     function _getAlphabetIndex(bytes1 char) internal pure returns (int256) {
         uint8 c = uint8(char);
         
+        // A-Z (indices 0-25)
         if (c >= 65 && c <= 90) return int256(uint256(c - 65));
+        // 0-9 (indices 26-35)
         if (c >= 48 && c <= 57) return int256(uint256(c - 48 + 26));
-        if (c == 33) return 36;
-        if (c == 64) return 37;
-        if (c == 35) return 38;
-        if (c == 36) return 39;
-        if (c == 37) return 40;
-        if (c == 38) return 41;
+        // !@#$%& (indices 36-41)
+        if (c == 33) return 36;   // !
+        if (c == 64) return 37;   // @
+        if (c == 35) return 38;   // #
+        if (c == 36) return 39;   // $
+        if (c == 37) return 40;   // %
+        if (c == 38) return 41;   // &
         
         return -1;
     }
@@ -1271,7 +1119,6 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         return false;
     }
 
-    // [COMPILE-03] Changed from `pure` to `view` - reads MEME_ALPHABET state variable
     function _generateMemeCombo(uint256 randomness) internal view returns (string memory) {
         bytes1[42] memory chars = MEME_ALPHABET;
         bytes memory combo = new bytes(GUESS_LENGTH);
@@ -1291,34 +1138,13 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     // VIEW FUNCTIONS
     // ═══════════════════════════════════════════════════════════════════════════════════════════
-    
-    /// @notice Returns NET available yield (after yieldSpent deduction)
-    function getUserYield(address user) public view returns (uint256) {
-        uint256 totalEarned = _calculateYieldFor(user);
-        uint256 spent = yieldSpent[user];
-        return totalEarned > spent ? totalEarned - spent : 0;
-    }
-
-    function _calculateYieldFor(address user) internal view returns (uint256) {
-        if (totalUserBalance == 0) return 0;
-        
-        uint256 totalContractValue = IERC20(aUSDC).balanceOf(address(this));
-        uint256 totalAllocated = prizePot + treasuryOperatingReserve + treasuryGiftReserve + totalUnclaimedPrizes;
-        
-        if (totalContractValue <= totalAllocated) return 0;
-        
-        uint256 totalYield = totalContractValue - totalAllocated;
-        return userBalance[user] * totalYield / totalUserBalance;
-    }
 
     function canGambleWithYield(address user) public view returns (bool) {
-        return getUserYield(user) >= TICKET_PRICE && 
-               _getActualAvailableYield(user) >= TICKET_PRICE &&
-               drawPhase == DrawPhase.IDLE;
+        return getUserYield(user) >= TICKET_PRICE && drawPhase == DrawPhase.IDLE;
     }
 
     function canClaimYield(address user) public view returns (bool) {
-        return getUserYield(user) > 0 && _getActualAvailableYield(user) > 0;
+        return getUserYield(user) > 0 && isAnniversary(user);
     }
 
     function hasMulliganAvailable(address user) public view returns (bool) {
@@ -1368,22 +1194,37 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         isSolvent = totalValue >= totalAllocated;
     }
 
-    function getTotalSeedYieldMaterialized() external view returns (uint256) {
-        return totalSeedYieldMaterialized;
+    function getSeedValue() external view returns (uint256) {
+        return prizePot * (10000 - payoutBps) / 10000;
     }
 
-    function getPendingSeedYield() external view returns (uint256) {
-        uint256 totalContractValue = IERC20(aUSDC).balanceOf(address(this));
-        uint256 totalAllocated = prizePot + treasuryOperatingReserve + treasuryGiftReserve + totalUnclaimedPrizes;
-        
-        if (totalContractValue <= totalAllocated) return 0;
-        
-        uint256 totalYield = totalContractValue - totalAllocated;
-        uint256 seedValue = prizePot * SEED_BPS_OF_POT / 10000;
-        
-        if (totalAllocated == 0) return 0;
-        
-        return totalYield * seedValue / totalAllocated;
+    function getMaxPayout() external view returns (uint256) {
+        return prizePot * payoutBps / 10000;
+    }
+
+    /// @notice Get global yield index (for debugging/analytics)
+    function getGlobalYieldIndex() external view returns (uint256) {
+        return globalYieldIndex;
+    }
+
+    /// @notice Get user's yield index (for debugging/analytics)
+    function getUserYieldIndex(address user) external view returns (uint256) {
+        return userYieldIndex[user];
+    }
+
+    /// @notice Get user's accumulated (settled) yield
+    function getAccumulatedYield(address user) external view returns (uint256) {
+        return accumulatedYield[user];
+    }
+
+    /// @notice Get user's total yield spent
+    function getYieldSpent(address user) external view returns (uint256) {
+        return yieldSpent[user];
+    }
+
+    /// @notice [V1.6.6-04] Get user's total lifetime prizes won
+    function getTotalPrizesWon(address user) external view returns (uint256) {
+        return totalPrizesWon[user];
     }
 
     function getWeeklyCombo(uint256 week) external view returns (string memory) {
@@ -1474,10 +1315,29 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         wouldBreakStreak = lastRound > 0 && currentWeek > lastRound + 1;
     }
 
+    /// @notice [V1.6.6] Get user's yield status
+    function getUserYieldStatus(address user) external view returns (
+        uint256 availableYield,
+        uint256 accumulated,
+        uint256 spent,
+        uint256 userIndex,
+        uint256 globalIndex,
+        bool canGamble,
+        bool canClaim,
+        uint256 nextAnniversary
+    ) {
+        availableYield = getUserYield(user);
+        accumulated = accumulatedYield[user];
+        spent = yieldSpent[user];
+        userIndex = userYieldIndex[user];
+        globalIndex = globalYieldIndex;
+        canGamble = canGambleWithYield(user);
+        canClaim = canClaimYield(user);
+        nextAnniversary = getNextAnniversary(user);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     // OWNER FUNCTIONS
-    // [V2.5-02] onlyOwner modifier comes from ConfirmedOwner (via VRFConsumerBaseV2Plus)
-    //           Ownership transfer is now 2-step: transferOwnership() → acceptOwnership()
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     
     function increasePayoutPercent(uint256 newBps) external onlyOwner {
@@ -1519,7 +1379,6 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         emit TreasuryGiftWithdrawal(amount, recipient);
     }
 
-    // [V2.5-08] Updated: uint64 → uint256 for subscription ID
     function updateVRFParameters(uint256 newSubId, bytes32 newKeyHash) external onlyOwner {
         if (pendingRequestId != 0) revert VRFPending();
         if (newSubId == 0) revert ExceedsLimit();
@@ -1531,7 +1390,6 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         emit VRFParametersUpdated(newSubId, newKeyHash);
     }
 
-    // [V2.5-07] Toggle between LINK and native ETH payment for VRF
     function setNativePayment(bool _useNative) external onlyOwner {
         useNativePayment = _useNative;
         emit NativePaymentUpdated(_useNative);
@@ -1608,7 +1466,6 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         emit DrawReset(currentWeek, "Forced completion");
     }
 
-    /// @notice Emergency force cleanup when batched cleanupWeek() is stuck
     function forceCleanup() external onlyOwner {
         if (drawPhase != DrawPhase.CLEANUP_NEEDED) revert WrongPhase();
         if (block.timestamp <= lastRequestTimestamp + DRAW_STUCK_TIMEOUT) revert TooEarly();
@@ -1624,22 +1481,29 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
-    // FUTURE-PROOF UPGRADE PATH
+    // V1.6.6 SUMMARY
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     //
-    // Core vault is immutable. Game rules can be upgraded via proxy + multisig later.
-    // No backdoors today — onlyOwner functions are minimal and one-way.
+    // YIELD MODEL:
+    //   - Epoch-based, time-weighted, fair
+    //   - Each bucket earns yield proportional to its size
+    //   - Prize pot compounds (THE ETERNAL SEED)
+    //   - Treasury compounds
+    //   - Users earn yield on their principal only
     //
-    // Immutable (cannot change):     USDC, aUSDC, AAVE_POOL, DEPLOY_TIMESTAMP
-    // One-way only (user-friendly):  payoutBps can only INCREASE, treasuryTakeBps can only DECREASE
-    // Emergency only:                Reset stuck draws (cannot drain funds)
+    // YIELD CLAIM RULES:
+    //   - gambleWithYield(): Anytime when yield >= $3
+    //   - claimYieldAsCash(): Anniversary only (7-day window)
+    //   - Broken streak: 50/50 forfeit to treasury/pot
+    //   - Unbroken streak: Yield rolls over forever
     //
-    // [V2.5-02] Ownership note:
-    //   ConfirmedOwner uses 2-step transfer (transferOwnership → acceptOwnership)
-    //   This is MORE secure than OZ Ownable's single-step transfer.
-    //   To make fully trustless: transfer ownership to a multisig or timelock.
-    //   Note: ConfirmedOwner does NOT have renounceOwnership().
-    //   If needed, add a custom implementation or transfer to address(dead).
+    // TRACKING:
+    //   - totalPrizesWon[user] tracks lifetime prize winnings
+    //   - GlobalYieldIndexUpdated event includes potYield for observability
+    //
+    // 42-CHARACTER ALPHABET:
+    //   - A-Z (26) + 0-9 (10) + !@#$%& (6) = 42 characters
+    //   - Jackpot odds: 1 in 5.2 million
     //
     // ═══════════════════════════════════════════════════════════════════════════════════════════
 }
