@@ -385,6 +385,9 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         // [V1.6.6] Initialize yield tracking
         globalYieldIndex = 0;
         lastSnapshotAUSDC = 0;
+        
+        // [V1.6.6] Approve Aave to spend USDC (required for deposits)
+        IERC20(_usdc).approve(_aavePool, type(uint256).max);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
