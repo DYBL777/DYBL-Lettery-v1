@@ -210,7 +210,7 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     uint256 public constant MAX_CLEANUP_PER_TX = 100;
     uint256 public constant MIN_ENTRIES_FOR_DRAW = 1;
     uint256 public constant GIFT_RESERVE_BPS = 5714;
-    uint256 public constant DRAW_COOLDOWN = 7 days;
+    uint256 public constant DRAW_COOLDOWN = 1 minutes;
     uint256 public constant VRF_TIMEOUT = 24 hours;
     uint256 public constant DRAW_STUCK_TIMEOUT = 48 hours;
     uint256 public constant GUESS_LENGTH = 6;
