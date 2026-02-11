@@ -1,7 +1,7 @@
 # The Eternal Seed: A Self-Sustaining Compounding Primitive for Recurring Payments
 
 **DYBL Foundation**  
-*January 2026*
+*February 2026*
 
 ---
 
@@ -13,13 +13,14 @@ Traditional payment systems let money drain away. No compounding. No shared upsi
 
 **Core Innovation:**
 - A set percentage of every payment retained forever
-- Retained funds compound via DeFi yield (Aave)
+- Retained funds compound via DeFi yield (Aave V3)
+- Proportional yield attribution ensures fairness across all capital buckets
 - Behavioural incentives reward consistency, penalise inconsistency
 - Immutable contract. Treasury can only decrease. No backdoors.
 - Overflow mechanism seeds expansion into TradFi, government, and beyond
 - Designed for Web2 users. Web3 under the hood.
 
-**Flagship Application:** Lettery. A no-loss lottery where ALL users buy tickets, enter draws, and earn yield. Features a Pavlovian saver/gambler toggle with Personal Rollover (V2) and on-chain inheritance.
+**Flagship Application:** Lettery. A no-loss lottery where ALL users buy tickets, enter draws, and earn yield. Deployed and verified on Base (Coinbase L2). Features a Pavlovian saver/gambler toggle with Personal Rollover (V2) and on-chain inheritance.
 
 **Broader Applications:** Subscriptions, insurance, pensions, SaaS, DAO treasuries. Anywhere recurring payments flow.
 
@@ -35,7 +36,7 @@ Traditional payment systems let money drain away. No compounding. No shared upsi
 2. [Why The Seed Changes Everything](#why-the-seed-changes-everything)
 3. [The Eternal Seed Mechanism](#the-eternal-seed-mechanism)
 4. [Immutable Design and Treasury Sunset](#immutable-design-and-treasury-sunset)
-5. [V1.3: Fixed Seed Implementation](#v13-fixed-seed-implementation)
+5. [V1.6.6: Proportional Yield Attribution](#v166-proportional-yield-attribution)
 6. [V2 Roadmap: Automated Treasury Management](#v2-roadmap-automated-treasury-management)
 7. [Example Application: Lettery](#example-application-lettery)
 8. [The Pavlovian Toggle and Personal Rollover (V2)](#the-pavlovian-toggle-and-personal-rollover-v2)
@@ -71,7 +72,7 @@ The Eternal Seed changes the paradigm.
 
 1. **Every payment feeds the seed.** A percentage is retained forever.
 2. **Seed never leaves.** Winners paid from prize pool. Seed untouched.
-3. **Seed earns yield.** Compounded via Aave.
+3. **Seed earns yield.** Compounded via Aave V3.
 4. **Rollovers grow it.** Unwon jackpots stay in pot.
 5. **Forfeits feed it.** Inconsistent users lose yield to the community.
 6. **Immutable rules.** Treasury can only decrease. No backdoors.
@@ -125,14 +126,14 @@ Every payment flows through this split:
 
 ```
 $3 Ticket Purchase
-│
-├── Prize Pot (in Aave)
-│   ├── Prize Pool (paid to winners)
-│   └── Eternal Seed (NEVER LEAVES)
-│
-└── Treasury
-    ├── Giveaway Reserve (cashback, rewards)
-    └── Operations
+|
++-- Prize Pot (in Aave V3)
+|   +-- Prize Pool (paid to winners)
+|   +-- Eternal Seed (NEVER LEAVES)
+|
++-- Treasury
+    +-- Giveaway Reserve (cashback, rewards)
+    +-- Operations
 ```
 
 *Note: All percentages are configurable at deployment.*
@@ -221,40 +222,58 @@ This is not a promise. It's coded into the contract. Immutable.
 
 ---
 
-## V1.3: Fixed Seed Implementation
+## V1.6.6: Proportional Yield Attribution
 
-### Current Architecture
+### The Problem V1.6.6 Solves
 
-**Revenue Split (Per Ticket):**
-- Configured percentage to Prize Pot
-  - Prize Pool (to winners)
-  - Eternal Seed (retained forever)
-- Configured percentage to Treasury
-  - Giveaway Reserve
-  - Operations
+Earlier versions had two yield problems:
 
-*All percentages configurable at deployment.*
+1. **_materializeYields() only tracked seed yield.** It did not actually compound the pot.
+2. **All unallocated yield went to users.** Including yield earned by the pot and treasury portions.
 
-**Yield Allocation:**
-- Seed yield credited to Prize Pot (materialised weekly)
-- User yield available to users (withdraw or gamble with)
-- Treasury yield funds operations
+This meant users received yield they had not earned, and the Eternal Seed was not compounding as designed. The core promise of the mechanism was broken.
 
-**Key Features:**
-- All users buy tickets to participate
-- Chainlink VRF for provably fair draws
-- Aave V3 for yield generation
-- Withdrawal lock period (prevents gaming)
-- Mulligan system (one free missed week per year)
-- Legacy Mode (on-chain inheritance)
-- Immutable core. One-way treasury changes only.
+### The V1.6.6 Solution
 
-### V1.3 Changelog
+V1.6.6 introduces proportional yield attribution with a global time-weighted index.
 
-- Removed depositSavings(). All users must buy tickets to participate.
-- Clarified saver/gambler mechanics (V2 feature).
-- Honest risk assessment added.
-- Seed yield materialisation implemented.
+**How it works:**
+
+Each capital bucket (prize pot, treasury, individual users) earns yield proportional to its size relative to the total Aave deposit. This is tracked through a globalYieldIndex that updates at every draw.
+
+```
+Total Aave Balance = Principal + Accrued Yield
+
+Pot Yield    = (Pot Share / Total Principal) * Total Yield
+User Yield   = (User Share / Total Principal) * Total Yield
+Treasury Yield = (Treasury Share / Total Principal) * Total Yield
+```
+
+**What this means:**
+
+- Prize pot earns yield proportional to its size. This yield STAYS IN POT. This is the Eternal Seed compounding.
+- Treasury earns yield proportional to its size.
+- Users earn yield only on their own deposits.
+- No yield sniping. Time-weighted index means late depositors only earn yield from their deposit forward.
+- Fair attribution regardless of when users enter or exit.
+
+### Why This Matters
+
+Without proportional yield attribution, the Eternal Seed is just a label. Capital sits in a pot but does not actually compound relative to its weight.
+
+With V1.6.6, the seed genuinely compounds. Every dollar retained earns its fair share of yield, and that yield stays locked, growing the floor permanently.
+
+This is the difference between a concept and a working mechanism.
+
+### Input Validation
+
+V1.6.6 also implements robust input validation at the contract level:
+
+- **Character length check.** Guesses must be exactly the configured length (6 for the 42-character variant). Wrong length reverts immediately.
+- **Duplicate character check.** Uses bitmap validation to detect duplicate characters in a single pass. Duplicates revert immediately.
+- **Gas efficiency.** Invalid inputs are rejected before any state changes, wasting no gas on bad transactions.
+
+These checks are enforced on-chain, not at the frontend. Security starts at the contract layer.
 
 ---
 
@@ -319,7 +338,7 @@ V2 Solution: Automated injection from treasury to pot when needed. Withdrawal ba
 | **Chainlink Automation only** | Fixed thresholds | No |
 | **Truflation + Chainlink** | Dynamic thresholds | Yes. Responds to real world. |
 
-V1.3 launches with manual triggers. V2 adds Chainlink Automation for full automation.
+V1.6.6 launches with manual triggers. V2 adds Chainlink Automation for full automation.
 
 ---
 
@@ -330,9 +349,9 @@ Lettery is the flagship demonstration of the Eternal Seed. A no-loss lottery whe
 ### How It Works
 
 **User Journey:**
-1. Buy a ticket (USDC)
+1. Buy a ticket ($3 USDC)
 2. Pick 6 unique characters from 42-character meme alphabet
-3. Ticket funds flow to Aave (earning yield)
+3. Ticket funds flow to Aave V3 (earning yield)
 4. Weekly Chainlink VRF draw
 5. Winners share prize pool. Seed stays forever.
 
@@ -340,6 +359,8 @@ Lettery is the flagship demonstration of the Eternal Seed. A no-loss lottery whe
 ```
 A-Z (26 letters) + 0-9 (10 digits) + !@#$%& (6 special) = 42 symbols
 ```
+
+**Jackpot Odds:** 1 in 5.2 million
 
 **Prize Tiers (from Prize Pool):**
 
@@ -352,6 +373,17 @@ A-Z (26 letters) + 0-9 (10 digits) + !@#$%& (6 special) = 42 symbols
 | 5 | 2/6 | Configured % |
 
 **Key Rule:** Users win at their BEST tier only. No double-dipping.
+
+### Game Variants
+
+The Eternal Seed mechanism supports multiple alphabet configurations, each deployed as a separate contract:
+
+| Variant | Alphabet | Characters | Jackpot Odds |
+|---------|----------|------------|-------------|
+| **Standard** | A-Z | 26 | 1 in 230,230 |
+| **Flagship** | A-Z + 0-9 + !@#$%& | 42 | 1 in 5,245,786 |
+
+Additional variants are documented in The Eternal Seed specification (TES.sol), covering 15+ configurations from casual to high-stakes play.
 
 ### Why Jackpot Size Matters
 
@@ -373,6 +405,9 @@ One free missed week per year (after eligibility period). Life happens. We don't
 
 **Yield Transparency:**
 All yield calculations on-chain. Users see exactly what they've earned.
+
+**Solvency Enforcement:**
+The contract enforces solvency checks before prize distribution. No payout can exceed available funds. Users are protected at the protocol level.
 
 ### Legacy Mode
 
@@ -504,18 +539,19 @@ This is experimental DeFi. The following risks exist:
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
-| **Smart contract vulnerability** | High | Professional audit (Cyfrin). Formal verification. |
+| **Smart contract vulnerability** | High | Professional audit planned. Formal verification. |
 | **Aave protocol exploit** | High | Monitor Aave security. Emergency procedures. |
 | **USDC depeg** | Medium | Diversified stablecoin support (future). |
 | **Chainlink VRF failure** | Medium | Timeout resets. Manual fallback. |
 | **Low Aave liquidity** | Medium | Liquidity checks. Rescue patterns. |
 | **Regulatory uncertainty** | Medium | Legal review. Non-prize versions for restricted regions. |
+| **Aave rounding** | Low | Solvency tolerance buffer handles micro-rounding on aUSDC returns. |
 
 ### What "Pot Can Only Grow" Actually Means
 
 Under normal operating conditions, the pot floor only rises because:
 - Seed is never paid out
-- Yield compounds
+- Yield compounds proportionally (V1.6.6)
 - Rollovers accumulate
 - Forfeits feed the pot
 
@@ -562,17 +598,29 @@ We are honest about risks. No false promises.
 
 ### Audit and Security
 
-**Status:** V1.3 is audit-ready.
+**Status:** V1.6.6 deployed and verified on Base Sepolia testnet.
 
 **Plan:**
-- Professional audit (Cyfrin or Chainlink ecosystem)
+- Professional audit (Cyfrin or Chainlink ecosystem partner)
 - Formal verification
 - Bug bounty program (post-mainnet)
 
 **Timeline:**
-- Audit preparation complete
+- Testnet deployment and verification complete
+- Full draw cycle tested on-chain
 - Professional audit next
 - Mainnet launch post-audit only
+
+### Chainlink Integration Roadmap
+
+V1.6.6 uses Chainlink VRF for provably fair draws. Future versions expand Chainlink integration:
+
+| Service | Version | Purpose |
+|---------|---------|---------|
+| **VRF V2.5** | V1.6.6 (live) | Provably fair random draw |
+| **Data Feeds** | V2 | Real-time yield monitoring |
+| **Automation** | V2 | Automated draw cycles, treasury injection |
+| **CCIP** | V3 | Cross-chain expansion to other L2s |
 
 ---
 
@@ -585,11 +633,12 @@ The Eternal Seed is a new DeFi primitive. Not just another lottery.
 1. **Universal Mechanism.** Works for any recurring payment.
 2. **Self-Sustaining.** Growth from retention plus yield plus forfeits.
 3. **Immutable Rules.** Treasury can only decrease. No backdoors.
-4. **Behavioural Design.** Personal Rollover conditions users toward saving.
-5. **Overflow Expansion.** When metrics hit, overflow seeds new pots globally.
-6. **Web2 Ready.** Designed for mainstream users. Not DeFi degens.
-7. **Honest About Risks.** No false promises. Transparent assessment.
-8. **Generational Impact.** Legacy Mode enables on-chain inheritance.
+4. **Fair Yield.** Proportional attribution ensures every dollar earns its fair share (V1.6.6).
+5. **Behavioural Design.** Personal Rollover conditions users toward saving.
+6. **Overflow Expansion.** When metrics hit, overflow seeds new pots globally.
+7. **Web2 Ready.** Designed for mainstream users. Not DeFi degens.
+8. **Honest About Risks.** No false promises. Transparent assessment.
+9. **Generational Impact.** Legacy Mode enables on-chain inheritance.
 
 Lettery demonstrates the gamified potential. The overflow mechanism expands it globally. The Eternal Seed becomes infrastructure for the future of finance.
 
@@ -601,17 +650,25 @@ Today's seed becomes tomorrow's fortune.
 
 ### Smart Contract
 
-- **Language:** Solidity ^0.8.24
-- **Dependencies:** Chainlink VRF, Aave V3, OpenZeppelin
-- **License:** BUSL 1.1. Becomes MIT after configured date.
+- **Language:** Solidity ^0.8.24 (compiled with v0.8.31)
+- **Dependencies:** Chainlink VRF V2.5, Aave V3, OpenZeppelin (ReentrancyGuard, SafeERC20)
+- **License:** BUSL 1.1. Becomes MIT on 10 May 2029.
+- **Chain:** Base (Coinbase L2, Ethereum rollup)
+
+### Deployed Contracts
+
+| Network | Address | Status |
+|---------|---------|--------|
+| **Base Sepolia** | 0xfBd7D074519ce29CffA11C2990cf2DFd020d14d4 | Verified on Basescan |
+| **Base Mainnet** | TBD | Post-audit |
 
 ### Parameters
 
 All parameters are configurable at deployment:
 - Ticket Price
-- Prize Pot Share
-- Seed Portion
-- Treasury Share
+- Prize Pot Share (payoutBps)
+- Seed Portion (retained within pot)
+- Treasury Share (treasuryTakeBps)
 - Giveaway Reserve
 - Operations Share
 - Withdrawal Lock Period
@@ -631,16 +688,31 @@ All parameters are configurable at deployment:
 | Payout percentage | One-way: can only INCREASE |
 | Treasury take | One-way: can only DECREASE |
 
-### Repository
+### Key V1.6.6 Technical Details
 
-- **GitHub:** [github.com/DYBL777/DYBL-v1](https://github.com/DYBL777/DYBL-v1)
-- **Current Version:** Lettery_AuditReady_v1.4.1.sol
+- **Yield tracking:** Global yield index updated at each draw. Time-weighted to prevent yield sniping.
+- **Input validation:** Bitmap-based duplicate detection. Length enforcement. All on-chain.
+- **Solvency checks:** Enforced before prize distribution. Includes tolerance buffer for Aave rounding.
+- **Draw cycle:** buyTicket > triggerDraw > VRF callback > calculateMatches > populateTiers > distributePrizes > cleanupWeek. All verified on testnet.
+- **Streak tracking:** Consecutive weekly participation tracked per user. Broken streaks trigger yield forfeit.
+
+### Repositories
+
+| Repository | Contents | Status |
+|------------|----------|--------|
+| **DYBL-Lettery-v1** | Flagship 42-character Lettery. Deployed code, whitepaper, Builder's Journey. | 76+ commits. Verified on Base Sepolia. |
+| **The-Eternal-Seed** | TES.sol specification. 15+ game variants. | Active development. |
+| **Protocol-Protection-Layer** | PPL v2.0. Insurance Seed mechanism. | Specification complete. |
+
+- **GitHub:** [github.com/DYBL777](https://github.com/DYBL777)
 
 ---
 
 ## About DYBL Foundation
 
 DYBL (Decentralised Yield Bearing Legacy) was created by an independent inventor, therapist, and blockchain researcher with 8 years of study in DeFi mechanisms and behavioural economics.
+
+Built through 800+ hours of AI-assisted development. No formal coding background. Proof that novel DeFi primitives can emerge from ideas, persistence, and the right tools.
 
 **Mission:** Transform recurring payments into wealth-building tools accessible to everyone.
 
@@ -659,14 +731,16 @@ DYBL (Decentralised Yield Bearing Legacy) was created by an independent inventor
 
 - **GitHub:** [github.com/DYBL777](https://github.com/DYBL777)
 - **Email:** dybl7@proton.me
+- **X:** [@DYBL77](https://x.com/DYBL77)
+- **Farcaster:** @dybl
 
 ---
 
 **DYBL Foundation**  
-*January 2026*
+*February 2026*
 
 ---
 
-**Version:** 1.4.1 (Audit-Ready)  
-**License:** BUSL 1.1. Becomes MIT after configured date.  
-**Status:** Seeking audit from Cyfrin or Chainlink ecosystem
+**Version:** 1.6.6  
+**License:** BUSL 1.1. Becomes MIT on 10 May 2029.  
+**Status:** Deployed and verified on Base Sepolia. Seeking audit partner.
