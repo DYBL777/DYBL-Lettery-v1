@@ -1,16 +1,14 @@
 # DYBL - Decentralised Yield Bearing Legacy
 
-**The Eternal Seed** — A Self-Sustaining Compounding Primitive
+## The Eternal Seed — A Self-Sustaining Compounding Primitive
 
----
-
-## One Sentence
+### One Sentence
 
 A percentage of every payment is retained forever. The pot floor only rises.
 
 ---
 
-## The Problem
+### The Problem
 
 Traditional lotteries reset to zero after every jackpot. Start over. Wait months.
 
@@ -18,13 +16,13 @@ Subscription payments drain away. No compounding. No shared upside.
 
 PoolTogether nearly died when yields dropped. No buffer. No floor.
 
----
-
-## The Solution
+### The Solution
 
 **The Eternal Seed.**
 
-10% of every payment retained forever. Never paid out. Compounds via Aave.
+$3 ticket: 65% to prize pot, 35% to treasury (ops + giveaways).
+15.2% of every prize pot retained forever. Never paid out. Compounds via Aave.
+84.8% maximum payout to winners. Enforced on-chain. The Seed cannot be emptied.
 
 Jackpot won? Seed stays. Pot rebuilds from higher floor.
 
@@ -32,7 +30,7 @@ No winner? Rolls over. Seed grows.
 
 User breaks streak? 50% of their yield feeds the pot.
 
-**Under normal conditions, the pot floor can only rise.**
+Under normal conditions, the pot floor can only rise.
 
 ---
 
@@ -42,29 +40,42 @@ A lottery where every ticket earns yield.
 
 | Feature | Description |
 |---------|-------------|
-| **$3 ticket** | Pick 6 characters from 42 (A-Z, 0-9, !@#$%&) |
-| **Weekly draw** | Chainlink VRF (provably fair) |
-| **5 prize tiers** | Match 2, 3, 4, 5, or 6 to win |
-| **Jackpot rolls over** | No winner? It grows |
-| **Yield-bearing** | All deposits earn Aave yield |
-| **Legacy Mode** | Set an heir, pass on your yield |
-| **Mulligan** | One free missed week per year |
+| $3 ticket | Pick 6 characters from 42 (A-Z, 0-9, !@#$%&) |
+| Weekly draw | Chainlink VRF V2.5 (provably fair) |
+| 5 prize tiers | Match 2, 3, 4, 5, or 6 to win |
+| Jackpot rolls over | No winner? It grows |
+| Yield-bearing | All deposits earn proportional Aave yield |
+| Streak rewards | Consistency pays, inconsistency forfeits |
+| Anniversary claims | Cash out yield during your annual window |
+| Gamble with yield | Convert accrued yield into free tickets anytime |
 
-**Lettery is the proof of concept. The Overflow is the product.**
+Lettery is the proof of concept. The Eternal Seed is the primitive.
+
+---
+
+## Seasons
+
+| Season | What Ships | Status |
+|--------|-----------|--------|
+| Season 1 (Launch) | Lettery S1. Core seed, yield, streaks, draws. Prove the mechanism. | Audit-ready |
+| Season 2 (~6 months) | Mulligan forgiveness, Pavlov yield toggle, Chainlink Automation | Designed |
+| Season 3 (~18 months) | Legacy Mode (on-chain inheritance), CCIP cross-chain | Documented |
+
+Each season is a new contract deployment. Old contracts remain immutable and functional.
 
 ---
 
 ## Key Innovations
 
 | Innovation | What It Does |
-|------------|--------------|
-| **Lettery** | The game. Meme alphabet. Viral potential. Web2 UX. |
-| **Eternal Seed** | Pot floor only rises |
-| **Lottery Model** | Principal stays forever, yield is yours |
-| **Streak Rewards** | Consistency pays, inconsistency forfeits |
-| **Pavlov Toggle (V2)** | Savers earn more than gamblers |
-| **Legacy Mode** | On-chain inheritance |
-| **Overflow (V2+)** | Expansion into TradFi, government, pensions |
+|-----------|-------------|
+| Eternal Seed | 15.2% of prize pot retained forever. Pot floor only rises. Enforced on-chain (max payout 84.8%). |
+| Proportional Yield | Each capital bucket earns its fair share. Time-weighted. No sniping. |
+| Streak Mechanics | Consistency rewarded. Broken streaks forfeit yield to pot and treasury. |
+| One-Way Treasury | Treasury take can only decrease. Never increase. Enforced on-chain. |
+| Anniversary Claims | Cash yield once per year. Gamble with yield anytime. |
+| Pavlov Toggle (S2) | Savers earn more than gamblers |
+| Legacy Mode (S3) | On-chain inheritance |
 
 ---
 
@@ -72,12 +83,10 @@ A lottery where every ticket earns yield.
 
 | Role | Provider |
 |------|----------|
-| **Randomness & Automation** | Chainlink (VRF, Automation, CCIP) |
-| **Yield Generation** | Aave V3 |
-| **Economic Governance (V2)** | Truflation |
-| **Security Standard** | Cyfrin |
-
-*See [Overflow Paper](./THE_OVERFLOW_v1.4.1.md) for infrastructure details.*
+| Randomness | Chainlink VRF V2.5 |
+| Yield Generation | Aave V3 |
+| Automation (S2) | Chainlink Automation |
+| Cross-chain (S3) | Chainlink CCIP |
 
 ---
 
@@ -85,41 +94,55 @@ A lottery where every ticket earns yield.
 
 | Document | Description |
 |----------|-------------|
-| 📄 [Whitepaper](https://github.com/DYBL777/DYBL-v1/blob/main/DYBL%20WHITEPAPER%20v1.4.1.md) | Full mechanism specification |
-| 📄 [Overflow](./THE_OVERFLOW_v1.4.1.md) | Expansion mechanism |
-| 📄 [Lettery.sol](https://github.com/DYBL777/DYBL-v1/blob/main/Lettery_v1.4.1.sol) | Governance model |
+| [Whitepaper](docs/DYBL_WHITEPAPER.md) | Full mechanism specification (v1.6.6) |
+| [Season 1 Spec](docs/Lettery_S1_Spec.md) | Audit-ready contract specification |
+| [Builder's Journey](docs/Builders_Journey.md) | How this was built |
+| [Known Issues](docs/Known_Issues.md) | Documented issues with proposed solutions |
 
 ---
 
 ## Contract
 
 ```
-📄 Lettery_v1.4.1.sol  — Current version
-📁 archive/            — Previous versions
+Lettery_S1.sol               — Season 1 (audit-ready, 838 code lines)
+
+archive/
+  Lettery_v1.6.6.sol         — Development build (full feature set)
 ```
+
+---
+
+## Deployed (Base Sepolia)
+
+| Item | Value |
+|------|-------|
+| Contract | 0xfBd7D074519ce29CffA11C2990cf2DFd020d14d4 |
+| Verified | Basescan (Standard JSON Input) |
+| Full draw cycle | Passing |
+| Input validation | Passing |
+| Solvency checks | Passing |
 
 ---
 
 ## Tech Stack
 
-- **Solidity** ^0.8.24
-- **Chainlink VRF** — Provably fair randomness
-- **Chainlink Automation** — Treasury management (V2)
-- **Aave V3** — Yield generation
-- **OpenZeppelin** — Security standards
+- Solidity ^0.8.24
+- Chainlink VRF V2.5 — Provably fair randomness
+- Aave V3 — Yield generation
+- OpenZeppelin — ReentrancyGuard, SafeERC20
 
 ---
 
 ## Risks
 
-⚠️ **Experimental DeFi.** Not yet professionally audited.
+⚠️ **Experimental DeFi. Not yet professionally audited.**
 
 - Smart contract vulnerabilities
 - Aave protocol dependency
 - USDC stablecoin risk
 - Chainlink VRF dependency
 
-*See Whitepaper for full risk assessment.*
+See Whitepaper for full risk assessment.
 
 ---
 
@@ -128,31 +151,30 @@ A lottery where every ticket earns yield.
 | Milestone | Status |
 |-----------|--------|
 | Core contract | ✅ Complete |
-| Internal review | ✅ Complete |
+| Season 1 contract (audit-ready) | ✅ Complete |
+| AI code review | ✅ Complete (7 fixes applied) |
 | Documentation | ✅ Complete |
-| Cyfrin engagement | 🔄 In progress |
+| Base Sepolia deployment | ✅ Complete |
+| Foundry test suite (S1) | 🔄 In progress |
 | Professional audit | ⏳ Pending |
-| Testnet | ⏳ Post-audit |
 | Mainnet | ⏳ Post-audit |
 
 ---
 
 ## Protection
 
+- **License:** BUSL-1.1 (MIT after May 2029)
 - **Patent:** US pending (Nov 2025) — Eternal Seed, Pavlov Toggle, Legacy Mode, Lettery
-- **License:** BUSL 1.1 → MIT after May 2029
 
 ---
 
-## The Vision
+## DYBL Repositories
 
-Lettery proves the primitive works.
-
-Overflow expands it globally.
-
-Guardians steward trillion-dollar decisions.
-
-**We don't compete with institutions. We give them infrastructure.**
+| Repo | Description |
+|------|-------------|
+| **DYBL-Lettery-v1** | Flagship lottery (this repo) |
+| **The-Eternal-Seed** | Primitive specification, 15 variants |
+| **Protocol-Protection-Layer** | Insurance seed, v2.0 |
 
 ---
 
@@ -160,12 +182,12 @@ Guardians steward trillion-dollar decisions.
 
 **DYBL Foundation** 🌱
 
-📧 dybl7@proton.me
+📧 [dybl7@proton.me](mailto:dybl7@proton.me)
 
 🐦 [@DYBL77](https://x.com/DYBL77)
 
+🟣 [@dybl](https://warpcast.com/dybl) (Farcaster)
+
 ---
 
-*Not a fork. A new primitive.*
-
-*The Eternal Seed grows forever.*
+*Not a fork. A new primitive. The Eternal Seed grows forever.*
