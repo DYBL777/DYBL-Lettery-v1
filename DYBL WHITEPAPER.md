@@ -17,7 +17,6 @@ Traditional payment systems let money drain away. No compounding. No shared upsi
 - Proportional yield attribution ensures fairness across all capital buckets
 - Behavioural incentives reward consistency, penalise inconsistency
 - Immutable contract. Treasury can only decrease. No backdoors.
-- Overflow mechanism seeds expansion into TradFi, government, and beyond
 - Designed for Web2 users. Web3 under the hood.
 
 **Flagship Application:** Lettery. A no-loss lottery where ALL users buy tickets, enter draws, and earn yield. Deployed and verified on Base (Coinbase L2). Features a Pavlovian saver/gambler toggle with Personal Rollover (V2) and on-chain inheritance.
@@ -35,7 +34,7 @@ Traditional payment systems let money drain away. No compounding. No shared upsi
 1. [Introduction](#introduction)
 2. [Why The Seed Changes Everything](#why-the-seed-changes-everything)
 3. [The Eternal Seed Mechanism](#the-eternal-seed-mechanism)
-4. [Immutable Design and Treasury Sunset](#immutable-design-and-treasury-sunset)
+4. [Immutable Design and One-Way Treasury](#immutable-design-and-one-way-treasury)
 5. [V1.6.6: Proportional Yield Attribution](#v166-proportional-yield-attribution)
 6. [V2 Roadmap: Automated Treasury Management](#v2-roadmap-automated-treasury-management)
 7. [Example Application: Lettery](#example-application-lettery)
@@ -76,7 +75,6 @@ The Eternal Seed changes the paradigm.
 4. **Rollovers grow it.** Unwon jackpots stay in pot.
 5. **Forfeits feed it.** Inconsistent users lose yield to the community.
 6. **Immutable rules.** Treasury can only decrease. No backdoors.
-7. **Overflow expands it.** When metrics hit, overflow seeds new pots globally.
 
 Designed for Web2 users. Web3 under the hood.
 
@@ -113,7 +111,6 @@ No DeFi knowledge required. Just pay, play, and watch the pot grow.
 - Has the seed.
 - Has the floor.
 - Has the injection mechanism (V2).
-- Has the overflow expansion mechanism.
 - Built to survive what killed the others.
 
 ---
@@ -164,7 +161,7 @@ Jackpot won. Seed stays. Floor never drops to zero. Compounding continues.
 
 ---
 
-## Immutable Design and Treasury Sunset
+## Immutable Design and One-Way Treasury
 
 ### Trustless by Design
 
@@ -178,47 +175,23 @@ The Eternal Seed contract is immutable. No admin can change the core rules after
 
 **What can ONLY move in one direction:**
 - Payout percentage can only INCREASE (better for users)
-- Treasury take can only DECREASE (eventually to zero)
+- Treasury take can only DECREASE (better for pot growth)
 
 No backdoors. No rug pulls. Code is law.
 
-### Treasury Sunset and Overflow Mechanism
+### One-Way Treasury Ratchet
 
-Treasury take is configured at deployment and decreases over time. Here's how:
+Treasury take is configured at deployment. The owner can reduce it at any time. The owner can never raise it.
 
-**Phase 1: Early Growth**
-- Treasury takes configured slice of each ticket
-- Funds operations and giveaway reserves
-- Pot grows from remaining allocation
+This is not a promise to reach zero. It is a guarantee that the direction is always in the users' favour. If the protocol reaches a point where treasury income is no longer needed, the owner can reduce it further. If it never reaches that point, the treasury continues to fund operations and giveaways at whatever rate is sustainable.
 
-**Phase 2: Cap/Metrics Achieved**
-- When configured cap or metrics are hit, treasury STOPS taking from frontend
-- 100% of new tickets flow to pot
-- Overflow begins
+The one-way mechanism means users can verify the trust model on-chain: treasury take at deployment is the maximum it will ever be. Every reduction is permanent and irreversible.
 
-**Phase 3: Overflow Distribution**
-- Overflow splits are immutable: Savers, Treasury, Charity
-- Overflow is monitored
-- As overflow grows, it seeds NEW pots for broader applications
+**Early phase:** Treasury takes configured slice. Funds operations and giveaway reserves.
+**Growth phase:** As the protocol matures, treasury take can be reduced. More of each ticket flows to the pot.
+**Mature phase:** If sustainable, treasury take can be reduced to zero. 100% of tickets flow to pot.
 
-**The Timeline:**
-
-Early phase: Treasury takes configured slice.
-Cap/metrics hit: Treasury stops taking from frontend.
-Overflow begins: Splits to Savers, Treasury, Charity (immutable).
-Forever: Overflow grows, seeds new pots.
-
-This is not a promise. It's coded into the contract. Immutable.
-
----
-
-*Footnote on Overflow:*
-
-*When cap/metrics are achieved, treasury stops taking from new tickets. Overflow begins. Overflow splits are immutable: Savers, Treasury, Charity.*
-
-*As overflow grows, it seeds new pots for broader applications: TradFi integrations, government programmes, pensions, utilities.*
-
-*Lettery is the proof of concept. Overflow is the expansion mechanism. The Eternal Seed becomes infrastructure.*
+Each step is a one-way door. Once treasury take drops, it stays dropped. The contract enforces this.
 
 ---
 
@@ -525,7 +498,6 @@ Every application benefits from:
 - Compounding yield
 - Behavioural incentives
 - Growing floor
-- Overflow expansion mechanism
 
 The primitive is universal. Lettery is just the proof of concept.
 
@@ -635,12 +607,11 @@ The Eternal Seed is a new DeFi primitive. Not just another lottery.
 3. **Immutable Rules.** Treasury can only decrease. No backdoors.
 4. **Fair Yield.** Proportional attribution ensures every dollar earns its fair share (V1.6.6).
 5. **Behavioural Design.** Personal Rollover conditions users toward saving.
-6. **Overflow Expansion.** When metrics hit, overflow seeds new pots globally.
-7. **Web2 Ready.** Designed for mainstream users. Not DeFi degens.
-8. **Honest About Risks.** No false promises. Transparent assessment.
-9. **Generational Impact.** Legacy Mode enables on-chain inheritance.
+6. **Web2 Ready.** Designed for mainstream users. Not DeFi degens.
+7. **Honest About Risks.** No false promises. Transparent assessment.
+8. **Generational Impact.** Legacy Mode enables on-chain inheritance.
 
-Lettery demonstrates the gamified potential. The overflow mechanism expands it globally. The Eternal Seed becomes infrastructure for the future of finance.
+Lettery demonstrates the gamified potential. The Eternal Seed is the primitive. The primitive is the infrastructure.
 
 Today's seed becomes tomorrow's fortune.
 
@@ -672,9 +643,6 @@ All parameters are configurable at deployment:
 - Giveaway Reserve
 - Operations Share
 - Withdrawal Lock Period
-- Mulligan Eligibility Period
-- Cap/Metrics Thresholds
-- Overflow Splits
 
 ### Immutable vs One-Way
 
@@ -684,7 +652,6 @@ All parameters are configurable at deployment:
 | Aave pool address | Immutable |
 | VRF coordinator | Immutable |
 | Deploy timestamp | Immutable |
-| Overflow splits | Immutable |
 | Payout percentage | One-way: can only INCREASE |
 | Treasury take | One-way: can only DECREASE |
 
