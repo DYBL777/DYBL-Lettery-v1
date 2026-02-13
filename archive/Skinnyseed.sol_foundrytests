@@ -1,0 +1,76 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+contract SkinnySeed {
+    address public owner;
+    uint256 public eternalSeed;
+    uint256 public prizePool;
+    uint256 public treasury;
+
+    uint256 public constant SEED_RATE = 10;
+    uint256 public constant PRIZE_RATE = 55;
+    uint256 public constant TREASURY_RATE = 35;
+
+    mapping(address => uint256) public userDeposits;
+    uint256 public totalDepositors;
+
+    error CannotWithdrawSeed();
+    error ZeroAmountNotAllowed();
+    error InsufficientBalance();
+    error OnlyOwner();
+
+    constructor() {
+        owner = msg.sender;
+    }
+
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert OnlyOwner();
+        _;
+    }
+
+    function deposit(uint256 amount) external {
+        if (amount == 0) revert ZeroAmountNotAllowed();
+        
+        if (userDeposits[msg.sender] == 0) {
+            totalDepositors++;
+        }
+        userDeposits[msg.sender] += amount;
+
+        uint256 seedPortion = (amount * SEED_RATE) / 100;
+        uint256 prizePortion = (amount * PRIZE_RATE) / 100;
+        uint256 treasuryPortion = (amount * TREASURY_RATE) / 100;
+
+        eternalSeed += seedPortion;
+        prizePool += prizePortion;
+        treasury += treasuryPortion;
+    }
+
+    function withdrawPrize(uint256 amount) external onlyOwner {
+        if (amount > prizePool) revert InsufficientBalance();
+        prizePool -= amount;
+    }
+
+    function withdrawTreasury(uint256 amount) external onlyOwner {
+        if (amount > treasury) revert InsufficientBalance();
+        treasury -= amount;
+    }
+
+    function withdrawSeed(uint256 amount) external pure {
+        revert CannotWithdrawSeed();
+    }
+
+    function materializeYields(uint256 yieldAmount) external {
+        uint256 pot = eternalSeed + prizePool;
+        if (pot == 0) return;
+
+        uint256 seedShare = (yieldAmount * eternalSeed) / pot;
+        uint256 prizeShare = yieldAmount - seedShare;
+
+        eternalSeed += seedShare;
+        prizePool += prizeShare;
+    }
+
+    function transferOwnership(address newOwner) external onlyOwner {
+        owner = newOwner;
+    }
+}
