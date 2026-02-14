@@ -23,8 +23,7 @@ pragma solidity ^0.8.24;
  *   - Legacy Mode (setHeir, claimInheritance, expireUnclaimed) -> Season 3
  *   - Mulligan System (free missed week) -> Season 2
  *   - forceCleanup() -> edge case, handled by emergencyResetDraw
- *   - Auto-sunset timer (zeroRevenueTimestamp) -> treasury is one-way ratchet only
- *   - Constructor params: heirEligibilityYears, heirClaimYears, mulliganMonths, zeroRevenueYears
+ *   - Constructor params: heirEligibilityYears, heirClaimYears, mulliganMonths
  *
  * WHAT WAS FIXED (vs v1.6.6):
  *   - [FIX-01] Solvency check now includes SOLVENCY_TOLERANCE (10000 units / 0.01 USDC)
@@ -34,6 +33,30 @@ pragma solidity ^0.8.24;
  *              payoutBps capped at 8480 (15.2% Eternal Seed minimum forever)
  *   - [FIX-07] Removed redundant per-ticket forceApprove. Constructor sets max
  *              approval once. Saves gas on every ticket purchase.
+ *   - [FIX-08] lastSnapshotAUSDC updated after Aave supply in _processTicketPurchase.
+ *              Prevents deposits being double-counted as yield on next index update.
+ *   - [FIX-09] lastSnapshotAUSDC updated after every Aave withdrawal (claimPrize,
+ *              claimYieldAsCash, withdrawTreasury).
+ *              Prevents real yield being masked by balance drops.
+ *   - [FIX-10] nonReentrant added to triggerDraw(). Defence in depth for external
+ *              call to Chainlink VRF coordinator.
+ *   - [FIX-11] Merged treasuryOperatingReserve and treasuryGiftReserve into single
+ *              treasuryBalance. Removed GIFT_RESERVE_BPS. One pot, one withdrawal
+ *              function. Ops vs giveaway allocation is a governance decision, not code.
+ *   - [FIX-12] Unclaimed prize yield now attributed to prizePot (Eternal Seed).
+ *              Previously, totalUnclaimedPrizes was in yield denominator but its
+ *              yield share was never assigned, silently growing solvency margin.
+ *   - [FIX-13] commitToZeroRevenue() added. One-shot, irreversible, owner sets
+ *              future timestamp (min 1yr out). After that date, first ticket purchase
+ *              auto-sets treasuryTakeBps to 0. Enforced on-chain, not by trust.
+ *              withdrawTreasury() also gets Aave liquidity check with restore-on-fail.
+ *   - [FIX-14] _updateGlobalYieldIndex() called before every Aave supply/withdrawal.
+ *              Without this, yield accumulated between draws was absorbed into the
+ *              snapshot baseline and never attributed to any bucket. Yield leakage
+ *              estimated at ~5% APY worth of unattributed surplus per year.
+ *              Added to: _processTicketPurchase, gambleWithYield, claimYieldAsCash,
+ *              claimPrize, withdrawTreasury. Also fixed rounding dust in yield split
+ *              by calculating userYield as remainder instead of independent division.
  *
  * CORE MECHANISM (UNCHANGED):
  *   - Proportional yield attribution (V1.6.6 globalYieldIndex)
@@ -51,9 +74,7 @@ pragma solidity ^0.8.24;
  *
  * REVENUE SPLIT (Per $3 Ticket):
  *   65% ($1.95) -> Prize Pot (ONE pot in Aave, seed is unpayable portion)
- *   35% ($1.05) -> Treasury
- *       ~20% ($0.60) -> Giveaway Reserve
- *       ~15% ($0.45) -> Operations
+ *   35% ($1.05) -> Treasury (ops and giveaway, allocation is governance decision)
  *
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
  */
@@ -98,6 +119,8 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     error ExceedsLimit();
     error NoTicketsBought();
     error NotAnniversary();
+    error AlreadyCommitted();
+    error TooSoon();
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     // DRAW PHASES
@@ -134,6 +157,7 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     
     uint256 public payoutBps;
     uint256 public treasuryTakeBps;
+    uint256 public zeroRevenueTimestamp;  // [FIX-13] Set once via commitToZeroRevenue()
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     // 42-CHARACTER MEME ALPHABET: A-Z + 0-9 + !@#$%&
@@ -159,7 +183,6 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     uint256 public constant MAX_MATCHES_PER_TX = 100;
     uint256 public constant MAX_CLEANUP_PER_TX = 100;
     uint256 public constant MIN_ENTRIES_FOR_DRAW = 1;
-    uint256 public constant GIFT_RESERVE_BPS = 5714;
     uint256 public constant DRAW_COOLDOWN = 7 days;
     uint256 public constant VRF_TIMEOUT = 24 hours;
     uint256 public constant DRAW_STUCK_TIMEOUT = 48 hours;
@@ -174,8 +197,7 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     
     uint256 public prizePot;
-    uint256 public treasuryOperatingReserve;
-    uint256 public treasuryGiftReserve;
+    uint256 public treasuryBalance;
     uint256 public totalUserBalance;
     uint256 public totalUnclaimedPrizes;
     uint256 public currentWeek;
@@ -259,12 +281,12 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     event PayoutPercentIncreased(uint256 oldBps, uint256 newBps);
     event TreasuryTakeDecreased(uint256 oldBps, uint256 newBps);
     event TreasuryWithdrawal(uint256 amount, address recipient);
-    event TreasuryGiftWithdrawal(uint256 amount, address recipient);
     event EmergencyReset(uint256 indexed week, DrawPhase fromPhase, string reason);
     event VRFParametersUpdated(uint256 newSubId, bytes32 newKeyHash);
     event YieldForfeited(address indexed user, uint256 amount, uint256 toTreasury, uint256 toPot);
     event VRFRequestReset(uint256 indexed requestId);
     event NativePaymentUpdated(bool useNative);
+    event ZeroRevenueCommitted(uint256 targetTimestamp);
 
     // ═══════════════════════════════════════════════════════════════════════════════════════════
     // CONSTRUCTOR (8 parameters)
@@ -345,7 +367,7 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         }
         
         uint256 totalYield = currentAUSDC - lastSnapshotAUSDC;
-        uint256 totalAllocated = prizePot + treasuryOperatingReserve + treasuryGiftReserve + totalUnclaimedPrizes + totalUserBalance;
+        uint256 totalAllocated = prizePot + treasuryBalance + totalUnclaimedPrizes + totalUserBalance;
         
         if (totalAllocated == 0) {
             lastSnapshotAUSDC = currentAUSDC;
@@ -354,16 +376,16 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         
         // Each bucket earns yield proportional to its size
         uint256 potYield = totalYield * prizePot / totalAllocated;
-        uint256 opsYield = totalYield * treasuryOperatingReserve / totalAllocated;
-        uint256 giftYield = totalYield * treasuryGiftReserve / totalAllocated;
-        uint256 userYield = totalYield * totalUserBalance / totalAllocated;
+        uint256 treasuryYield = totalYield * treasuryBalance / totalAllocated;
+        uint256 unclaimedYield = totalYield * totalUnclaimedPrizes / totalAllocated;  // [FIX-12]
+        uint256 userYield = totalYield - potYield - treasuryYield - unclaimedYield;  // Remainder avoids rounding dust
         
         // Pot compounds (THE ETERNAL SEED)
-        prizePot += potYield;
+        // [FIX-12] Unclaimed prize yield feeds back to pot
+        prizePot += potYield + unclaimedYield;
         
-        // Treasury compounds
-        treasuryOperatingReserve += opsYield;
-        treasuryGiftReserve += giftYield;
+        // Treasury compounds [FIX-11]
+        treasuryBalance += treasuryYield;
         
         // Users get their proportional share via index
         if (totalUserBalance > 0 && userYield > 0) {
@@ -470,6 +492,7 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         if (thisWeekGuesses[msg.sender].length >= MAX_GUESSES_PER_USER) revert MaxGuessesReached();
         if (totalEntriesThisWeek >= MAX_TOTAL_ENTRIES_PER_WEEK) revert WeekFull();
         
+        _updateGlobalYieldIndex();  // [FIX-14] Fresh yield before checking balance
         _settleYield(msg.sender);
         
         uint256 availableYield = getUserYield(msg.sender);
@@ -477,6 +500,9 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         
         _updateActivityTracking(msg.sender);
         
+        // Yield gamble: full $3 goes to prizePot with no treasury take.
+        // Intentional: treasury already took 35% when the original tickets were bought.
+        // Taxing yield again would be double-dipping on the same capital.
         yieldSpent[msg.sender] += TICKET_PRICE;
         prizePot += TICKET_PRICE;
         ticketsBought[msg.sender]++;
@@ -495,19 +521,26 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     }
 
     function _processTicketPurchase(address user) internal {
+        _updateGlobalYieldIndex();  // [FIX-14] Capture accumulated yield before supply resets snapshot
         _settleYield(user);
         
         // Note: USDC is assumed to be a standard ERC20 with no fee-on-transfer.
         // Constructor sets max approval for Aave Pool, no per-ticket approval needed.
         IERC20(USDC).safeTransferFrom(user, address(this), TICKET_PRICE);
         IPool(AAVE_POOL).supply(USDC, TICKET_PRICE, address(this), 0);
+        lastSnapshotAUSDC = IERC20(aUSDC).balanceOf(address(this));  // [FIX-08] Prevent deposit being counted as yield
+
+        // [FIX-13] Auto-enforce zero revenue commitment
+        if (zeroRevenueTimestamp != 0 && block.timestamp >= zeroRevenueTimestamp && treasuryTakeBps > 0) {
+            emit TreasuryTakeDecreased(treasuryTakeBps, 0);
+            treasuryTakeBps = 0;
+        }
 
         uint256 prizeAllocation = TICKET_PRICE * (10000 - treasuryTakeBps) / 10000;
         prizePot += prizeAllocation;
 
         uint256 treasurySlice = TICKET_PRICE - prizeAllocation;
-        treasuryGiftReserve += treasurySlice * GIFT_RESERVE_BPS / 10000;
-        treasuryOperatingReserve += treasurySlice - (treasurySlice * GIFT_RESERVE_BPS / 10000);
+        treasuryBalance += treasurySlice;  // [FIX-11] Single treasury pot
 
         _updateActivityTracking(user);
         
@@ -570,7 +603,7 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         uint256 toTreasury = yield / 2;
         uint256 toPrizePot = yield - toTreasury;
         
-        treasuryOperatingReserve += toTreasury;
+        treasuryBalance += toTreasury;
         prizePot += toPrizePot;
         
         emit YieldForfeited(user, yield, toTreasury, toPrizePot);
@@ -625,7 +658,7 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
             
             // [FIX-01] Solvency check with tolerance for Aave rounding
             uint256 totalValue = IERC20(aUSDC).balanceOf(address(this));
-            uint256 totalAllocated = prizePot + treasuryOperatingReserve + treasuryGiftReserve + totalUnclaimedPrizes;
+            uint256 totalAllocated = prizePot + treasuryBalance + totalUnclaimedPrizes;
             if (totalValue + SOLVENCY_TOLERANCE < totalAllocated) revert SolvencyCheckFailed();
             
             uint256 payoutPool = prizePot * payoutBps / 10000;
@@ -811,10 +844,13 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         uint256 amount = unclaimedPrizes[msg.sender];
         if (amount == 0) revert NothingToClaim();
         
+        _updateGlobalYieldIndex();  // [FIX-14] Capture yield before withdrawal resets snapshot
+        
         unclaimedPrizes[msg.sender] = 0;
         totalUnclaimedPrizes -= amount;
         
         try IPool(AAVE_POOL).withdraw(USDC, amount, address(this)) {
+            lastSnapshotAUSDC = IERC20(aUSDC).balanceOf(address(this));  // [FIX-09]
             IERC20(USDC).safeTransfer(msg.sender, amount);
             totalPrizesWon[msg.sender] += amount;
             emit PrizeClaimed(msg.sender, amount);
@@ -835,6 +871,7 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
     function claimYieldAsCash() external nonReentrant {
         if (!isAnniversary(msg.sender)) revert NotAnniversary();
         
+        _updateGlobalYieldIndex();  // [FIX-14] Capture accumulated yield before withdrawal resets snapshot
         _settleYield(msg.sender);
         
         uint256 yield = getUserYield(msg.sender);
@@ -843,6 +880,7 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         yieldSpent[msg.sender] += yield;
         
         try IPool(AAVE_POOL).withdraw(USDC, yield, address(this)) {
+            lastSnapshotAUSDC = IERC20(aUSDC).balanceOf(address(this));  // [FIX-09]
             IERC20(USDC).safeTransfer(msg.sender, yield);
             emit YieldClaimed(msg.sender, yield);
         } catch {
@@ -977,7 +1015,7 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
 
     function getSolvencyStatus() external view returns (uint256 totalValue, uint256 totalAllocated, bool isSolvent) {
         totalValue = IERC20(aUSDC).balanceOf(address(this));
-        totalAllocated = prizePot + treasuryOperatingReserve + treasuryGiftReserve + totalUnclaimedPrizes;
+        totalAllocated = prizePot + treasuryBalance + totalUnclaimedPrizes;
         isSolvent = totalValue + SOLVENCY_TOLERANCE >= totalAllocated;
     }
 
@@ -1116,28 +1154,39 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         treasuryTakeBps = newBps;
     }
 
-    function withdrawTreasuryOps(uint256 amount, address recipient) external onlyOwner {
-        if (amount > treasuryOperatingReserve) revert InsufficientBalance();
-        if (recipient == address(0)) revert InvalidAddress();
+    /// @notice One-shot commitment to zero treasury revenue by a future date.
+    ///         Once called, cannot be changed or revoked. Treasury take auto-sets
+    ///         to 0 on any ticket purchase after the target date.
+    /// @param targetTimestamp Unix timestamp after which treasury take becomes 0.
+    ///        Must be at least 365 days in the future.
+    function commitToZeroRevenue(uint256 targetTimestamp) external onlyOwner {
+        if (zeroRevenueTimestamp != 0) revert AlreadyCommitted();
+        if (targetTimestamp < block.timestamp + 365 days) revert TooSoon();
         
-        treasuryOperatingReserve -= amount;
+        zeroRevenueTimestamp = targetTimestamp;
         
-        IPool(AAVE_POOL).withdraw(USDC, amount, address(this));
-        IERC20(USDC).safeTransfer(recipient, amount);
-        
-        emit TreasuryWithdrawal(amount, recipient);
+        emit ZeroRevenueCommitted(targetTimestamp);
     }
 
-    function withdrawTreasuryGift(uint256 amount, address recipient) external onlyOwner {
-        if (amount > treasuryGiftReserve) revert InsufficientBalance();
+    function withdrawTreasury(uint256 amount, address recipient) external onlyOwner {
+        if (amount > treasuryBalance) revert InsufficientBalance();
         if (recipient == address(0)) revert InvalidAddress();
         
-        treasuryGiftReserve -= amount;
+        _updateGlobalYieldIndex();  // [FIX-14] Capture yield before withdrawal resets snapshot
+        treasuryBalance -= amount;
         
+        uint256 balanceBefore = IERC20(USDC).balanceOf(address(this));
         IPool(AAVE_POOL).withdraw(USDC, amount, address(this));
-        IERC20(USDC).safeTransfer(recipient, amount);
+        uint256 received = IERC20(USDC).balanceOf(address(this)) - balanceBefore;
+        lastSnapshotAUSDC = IERC20(aUSDC).balanceOf(address(this));  // [FIX-09]
         
-        emit TreasuryGiftWithdrawal(amount, recipient);
+        if (received < amount) {
+            revert AaveLiquidityLow();  // revert undoes treasuryBalance -= amount automatically
+        }
+        
+        IERC20(USDC).safeTransfer(recipient, received);
+        
+        emit TreasuryWithdrawal(received, recipient);
     }
 
     function updateVRFParameters(uint256 newSubId, bytes32 newKeyHash) external onlyOwner {
@@ -1156,7 +1205,7 @@ contract Lettery is VRFConsumerBaseV2Plus, ReentrancyGuard {
         emit NativePaymentUpdated(_useNative);
     }
 
-    function triggerDraw() external {
+    function triggerDraw() external nonReentrant {  // [FIX-10]
         if (block.timestamp < lastDrawTimestamp + DRAW_COOLDOWN) revert CooldownActive();
         if (pendingRequestId != 0) revert VRFPending();
         if (drawPhase != DrawPhase.IDLE) revert DrawInProgress();
